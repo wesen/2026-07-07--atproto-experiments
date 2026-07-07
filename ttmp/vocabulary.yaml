@@ -5,6 +5,24 @@ topics:
       description: Backend services
     - slug: websocket
       description: WebSocket lifecycle & events
+    - slug: atproto
+      description: AT Protocol development and specs
+    - slug: firehose
+      description: ATProto firehose / event stream subscription
+    - slug: frontend
+      description: Frontend (React/Vite/Redux) surfaces
+    - slug: go
+      description: Go backend code
+    - slug: glazed
+      description: Glazed framework CLI tooling
+    - slug: jetstream
+      description: Jetstream JSON streaming service
+    - slug: react
+      description: React UI
+    - slug: redux
+      description: Redux state management
+    - slug: bsky
+      description: Bluesky app.bsky lexicons
 docTypes:
     - slug: design-doc
       description: Structured rationale and architecture notes

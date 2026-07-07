@@ -1,0 +1,11 @@
+# Go
+/tmp/
+*.test
+*.out
+
+# Frontend
+frontend/node_modules/
+# dist is committed (embedded placeholder + built SPA) — keep it
+
+# OS
+.DS_Store
