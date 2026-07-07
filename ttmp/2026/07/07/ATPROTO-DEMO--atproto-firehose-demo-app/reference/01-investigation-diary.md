@@ -285,6 +285,7 @@ works: SPA serving, firehose connection, CBOR/CAR decoding, and the `/api` +
 - `curl http://localhost:18081/` → served the embedded SPA.
 - `curl http://localhost:18081/api/status` → `{"lastSeq":31633231492,"loggedIn":false}`.
 - `curl http://localhost:18081/api/posts` → real decoded posts, e.g. `{"did":"did:plc:rvf22xkomx6eydkcjxdkeijb","rkey":"3mq3r32dzws25","uri":"at://.../app.bsky.feed.post/...","text":"He called and immediately tried to guilt trip me lol","langs":["en"],"action":"create","seq":31633231144,...}`.
+- **Browser verification with Playwright** (added after the user asked "did you test it with playwright or so?"): navigated to `http://localhost:18090/`, waited 5s, captured an accessibility snapshot. Confirmed the React app rendered the header, the "Live firehose" panel (`500 shown · seq 31633487813 · ~39/s` — proving the `/ws` WebSocket delivers live posts and the rate counter works), hundreds of real decoded posts with text/DID/relative-time/create-delete-action, and the "Sign in to your bsky account" app-password form. Console had **0 errors / 0 warnings**. Saved a viewport screenshot to `atproto-demo-live.jpeg`.
 
 ### Why
 Verifying against the live network is the only way to confirm the CBOR/CAR decode path is correct — unit tests with fixtures can't catch relay-specific quirks like `prevData` nullability.
@@ -299,6 +300,7 @@ Verifying against the live network is the only way to confirm the CBOR/CAR decod
 ### What I learned
 - The firehose is genuinely high-volume: dozens of posts decoded in a few seconds.
 - `relay1.us-east.bsky.network` provides `prevData`; the bare `bsky.network` endpoint does not (matches the bsky firehose guide's note).
+- The earlier `curl`-only verification proved the backend but **not** the browser. Playwright confirmed the full stack (embedded SPA → /ws WebSocket → Redux → React render) works with zero console errors. The lesson: always do a browser pass, not just API curls.
 
 ### What was tricky to build
 - Nothing new; this was validation. The earlier `--log-level` fix was what made this run possible.
