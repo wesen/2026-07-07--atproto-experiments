@@ -1,0 +1,89 @@
+Most parts of the Atmosphere stack have supported deployments. Some components are easier to 
+self-host than others, depending on whether you are providing application-level infrastructure 
+(like an AppView or Relay) or data-level infrastructure (like a PDS).
+
+## PDS
+
+Resources for self-hosting a PDS, including install steps, Docker images and Frequently Asked 
+Questions, are available from the [PDS](https://github.com/bluesky-social/pds) Github repo. Start 
+here if you want to host your own PDS!
+
+The PDS Docker image includes [goat](https://github.com/bluesky-social/goat), our command line tool 
+for performing admin functions.
+
+If you are moving your account from one PDS (such as a Bluesky-hosted PDS) to another, refer to 
+[Account Migration](https://atproto.com/guides/account-migration).
+
+If you need to change the *domain name* of a self-hosted PDS, you need to:
+
+- Change the PLC entries for *each* of your hosted accounts. You can use community-maintained 
+interfaces like [boat](https://boat.kelinci.net/plc-applicator) for this.
+- Update your DNS configuration as you would for any other server, then change the domain name in 
+`pds.env`.
+
+For guidance on scaling and hardening a PDS, refer to [Going to 
+Production](https://atproto.com/guides/going-to-production).
+
+Bluesky runs many PDSs with an “entryway” in front of them. For information on this 
+implementation, refer to [Entryway](https://docs.bsky.app/docs/advanced-guides/entryway).
+
+There are also several community PDS implementations! For example:
+
+- [Tranquil PDS](https://tangled.org/tranquil.farm/tranquil-pds), written in Rust.
+- [Cocoon](https://tangled.org/hailey.at/cocoon), written in Go.
+
+## Relays
+
+Hosting your own Relay is possible, though bandwidth intensive. Relays typically operate in a 
+[full-network mode](https://atproto.com/guides/the-at-stack#relays), where they replicate data from 
+all PDSes and repositories on the AT Protocol network. However, operating a Relay is *not* 
+storage-intensive, as Relays are not required to retain archival copies of network data as of [Sync 
+1.1](https://atproto.com/blog/relay-updates-sync-v1-1).
+
+There are a few different relay implementations:
+
+- [Reference 
+Implementation](https://github.com/bluesky-social/indigo/blob/main/cmd/relay/README.md), written in 
+Go.
+- [Blacksky Relay](https://github.com/blacksky-algorithms/rsky/tree/main/rsky-relay#rsky-relay), 
+written in Rust.
+
+## Tap
+
+Tap is used for syncing existing records from the AT network and then continuing to receive new 
+records from the firehose. For a guide to deploying Tap, refer to the [Tap 
+readme](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/README.md#distribution--deploymen
+t).
+
+We also provide a quick start guide for [deploying 
+Tap](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/RAILWAY_DEPLOY.md) to 
+[Railway](https://railway.com/).
+
+## AppViews
+
+Creating or hosting your own AppView is possible, but resource intensive. Compared with hosting 
+your own PDS, which is a way of personally controlling access to your own data repository, hosting 
+an AppView is something that you would only do to provide application-level infrastructure. 
+Generally, the first thing you would need to do here is replicate all of the data in the network 
+for the Lexicons that your application handles. Refer to the 
+[Sync](https://atproto.com/guides/sync) docs for a starting point, or see the Tap section above.
+
+There are lots of other decisions that will go into designing and running your own Atmosphere apps! 
+This will not be a comprehensive list of recommendations.
+
+- For your app's signup flow, you will need users to log in or create an account. We generally 
+recommend hosting your own PDS alongside your app to allow first-time users of the Atmosphere — 
+who may not yet be aware of the concept of a PDS — to sign up directly within your application. 
+Your PDS and AppView should have [different domain 
+names](https://atproto.com/guides/going-to-production#domain-names).
+
+## Ozone
+
+Refer to [Using Ozone](https://atproto.com/guides/using-ozone) for self-hosting guidance.
+
+## Deploy Recipes
+
+For community-contributed deployment solutions that do not use our official tooling, and may 
+support different environments, refer to the 
+[deploy-recipes](https://github.com/bluesky-social/deploy-recipes) Github repo. Contributions are 
+welcome!

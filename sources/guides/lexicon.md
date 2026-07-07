@@ -1,0 +1,141 @@
+## About lexicons
+
+Lexicon is a schema system used to define RPC methods and record types. Every Lexicon schema is 
+written in JSON, in a format similar to [JSON-Schema](https://json-schema.org/) for defining 
+constraints.
+
+**Lexicons provide Interoperability.** AT applications need a way to declare their own behaviors 
+and semantics. Lexicon solves this while making it straightforward for developers to introduce new 
+schemas.
+
+The schemas are identified using [NSIDs](https://atproto.com/specs/nsid), a reverse-DNS format. 
+Here are some example API endpoints:
+
+```
+com.atproto.repo.getRecord
+com.atproto.identity.resolveHandle
+app.bsky.feed.getPostThread
+app.bsky.notification.listNotifications
+```
+
+And here are some example record types:
+
+```
+app.bsky.feed.post
+app.bsky.feed.like
+app.bsky.actor.profile
+app.bsky.graph.follow
+```
+
+The schema types, definition language, and validation constraints are described in the [Lexicon 
+specification](https://atproto.com/specs/lexicon), and representations in JSON and CBOR are 
+described in the [Data Model specification](https://atproto.com/specs/data-model).
+
+## HTTP API methods
+
+Atproto HTTP API methods each scope and implement a particular set of Lexicons. The AT Protocol's 
+API system, [XRPC](https://atproto.com/specs/xrpc), is essentially a thin wrapper around HTTPS. For 
+example, a call to:
+
+```tsx
+client.call(app.bsky.actor.getProfile, {})
+```
+
+is actually just an HTTP request:
+
+```
+GET /xrpc/com.example.getProfile
+```
+
+The schemas establish valid query parameters, request bodies, and response bodies.
+
+```json
+{
+  "lexicon": 1,
+  "id": "com.example.getProfile",
+  "defs": {
+    "main": {
+      "type": "query",
+      "parameters": {
+        "type": "params",
+        "required": ["user"],
+        "properties": { "user": { "type": "string" } }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["did", "name"],
+          "properties": {
+            "did": { "type": "string" },
+            "name": { "type": "string" },
+            "displayName": { "type": "string", "maxLength": 64 },
+            "description": { "type": "string", "maxLength": 256 }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## Record types
+
+Schemas define the possible values of a record. Every record has a "type" which maps to a schema 
+and also establishes the URL of a record.
+
+For instance, this "follow" record:
+
+```json
+{
+  "$type": "com.example.follow",
+  "subject": "at://did:plc:12345",
+  "createdAt": "2022-10-09T17:51:55.043Z"
+}
+```
+
+…would have a URL like:
+
+```
+at://bob.com/com.example.follow/12345
+```
+
+…and a schema like:
+
+```json
+{
+  "lexicon": 1,
+  "id": "com.example.follow",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A social follow",
+      "record": {
+        "type": "object",
+        "required": ["subject", "createdAt"],
+        "properties": {
+          "subject": { "type": "string" },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}
+```
+
+## Versioning
+
+Once a Lexicon is published, it can never change its constraints. Loosening a constraint (adding 
+possible values) will cause old software to fail validation for new data, and tightening a 
+constraint (removing possible values) will cause new software to fail validation for old data. As a 
+consequence, lexicons may only add optional constraints to previously unconstrained fields.
+
+If a lexicon must change a previously-published constraint, it should be published as a new lexicon 
+under a new NSID.
+
+## Further Reading and Resources
+
+Lexicons can be [installed locally](https://atproto.com/guides/installing-lexicons) for each of our 
+SDKs from our Lexicon registry. You can also [publish your own 
+Lexicons](https://atproto.com/guides/publishing-lexicons) following our [Style 
+Guide](https://atproto.com/guides/lexicon-style-guide).
