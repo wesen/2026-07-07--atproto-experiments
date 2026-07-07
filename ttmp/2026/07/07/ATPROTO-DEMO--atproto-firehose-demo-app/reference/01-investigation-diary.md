@@ -18,23 +18,33 @@ DocType: reference
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/firehose/consumer.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/bsky/client.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/server.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/cmd/atproto-demo/main.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/embed.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/store.ts
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/cmd/atproto-demo/main.go
+      Note: glazed/cobra CLI entry; built in Step 3
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/embed.go
+      Note: go:embed of frontend/dist; built in Step 3
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/store.ts
+      Note: Built in Step 4
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/bsky/client.go
+      Note: Account client; built in Step 3
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/firehose/consumer.go
+      Note: Built in Step 3; verified in Step 5
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/server.go
+      Note: HTTP server; built in Step 3
 ExternalSources:
     - https://atproto.com/specs/sync
     - https://github.com/bluesky-social/indigo
-Summary: >
-  Chronological investigation diary for the ATProto firehose demo: spec
-  download, study, Go+glazed backend, React/Vite/Redux frontend, end-to-end
-  verification, and the design/implementation guide.
-LastUpdated: 2026-07-07
-WhatFor: "Record how the demo was built, what failed, and how to continue."
-WhenToUse: "Read before resuming work on ATPROTO-DEMO."
+Summary: |
+    Chronological investigation diary for the ATProto firehose demo: spec download, study, Go+glazed backend, React/Vite/Redux frontend, end-to-end verification, and the design/implementation guide.
+LastUpdated: 2026-07-07T00:00:00Z
+WhatFor: Record how the demo was built, what failed, and how to continue.
+WhenToUse: Read before resuming work on ATPROTO-DEMO.
 ---
+
+
+
+
+
+
 
 # Investigation Diary
 

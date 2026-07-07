@@ -18,14 +18,22 @@ DocType: design-doc
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/firehose/consumer.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/bsky/client.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/server.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/ws.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/cmd/atproto-demo/main.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/embed.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/store.ts
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/useFirehose.ts
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/cmd/atproto-demo/main.go
+      Note: glazed/cobra CLI entry (serve + firehose)
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/embed.go
+      Note: go:embed of frontend/dist into the binary
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/store.ts
+      Note: Redux store (feed + session slices)
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/useFirehose.ts
+      Note: WebSocket hook with reconnect
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/bsky/client.go
+      Note: Account client (app-password login, create post, like)
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/firehose/consumer.go
+      Note: Firehose subscriber (indigo events.HandleRepoStream + commit decode)
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/server.go
+      Note: HTTP server (net/http ServeMux + ring buffer + /api)
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/ws.go
+      Note: WebSocket fan-out to browsers
 ExternalSources:
     - https://atproto.com/specs/sync
     - https://atproto.com/specs/event-stream
@@ -33,18 +41,20 @@ ExternalSources:
     - https://atproto.com/specs/data-model
     - https://github.com/bluesky-social/indigo
     - https://github.com/bluesky-social/jetstream
-Summary: >
-  A complete, intern-ready design and implementation guide for a learning
-  application that subscribes to the ATProto firehose (the
-  com.atproto.sync.subscribeRepos WebSocket event stream), decodes Bluesky
-  posts from CBOR/CAR blocks, and lets the user act on their own bsky
-  account (post, like). Covers the full ATProto architecture, the wire
-  protocol, the Go+glazed backend, the React/Vite/Redux frontend, and a
-  phased implementation plan with pseudocode, diagrams, and API references.
-LastUpdated: 2026-07-07
-WhatFor: "Onboarding a new intern to build and extend the ATProto firehose demo."
-WhenToUse: "Read this before touching any file in pkg/ or frontend/src/."
+Summary: |
+    A complete, intern-ready design and implementation guide for a learning application that subscribes to the ATProto firehose (the com.atproto.sync.subscribeRepos WebSocket event stream), decodes Bluesky posts from CBOR/CAR blocks, and lets the user act on their own bsky account (post, like). Covers the full ATProto architecture, the wire protocol, the Go+glazed backend, the React/Vite/Redux frontend, and a phased implementation plan with pseudocode, diagrams, and API references.
+LastUpdated: 2026-07-07T00:00:00Z
+WhatFor: Onboarding a new intern to build and extend the ATProto firehose demo.
+WhenToUse: Read this before touching any file in pkg/ or frontend/src/.
 ---
+
+
+
+
+
+
+
+
 
 # ATProto Firehose Demo App — Design & Implementation Guide
 
