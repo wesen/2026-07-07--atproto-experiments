@@ -10,5 +10,5 @@
 - [x] Build React/Vite/Redux frontend <!-- t:bf8q -->
 - [x] Verify end-to-end against live relay <!-- t:cn5p -->
 - [x] Write intern design & implementation guide <!-- t:qvxx -->
-- [ ] Docmgr bookkeeping + doctor validation <!-- t:49ci -->
-- [ ] Upload design doc + diary to reMarkable <!-- t:q99o -->
+- [x] Docmgr bookkeeping + doctor validation <!-- t:49ci -->
+- [x] Upload design doc + diary to reMarkable <!-- t:q99o -->

@@ -31,3 +31,12 @@ Wrote 16-section intern design & implementation guide + 7-step investigation dia
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/ttmp/2026/07/07/ATPROTO-DEMO--atproto-firehose-demo-app/design-doc/01-atproto-firehose-demo-app-design-implementation-guide.md — Primary deliverable
 
+
+## 2026-07-07
+
+Docmgr bookkeeping complete; doctor passes; uploaded design doc + diary bundle to reMarkable at /ai/2026/07/07/ATPROTO-DEMO (commit 2523c75)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/ttmp/2026/07/07/ATPROTO-DEMO--atproto-firehose-demo-app/design-doc/01-atproto-firehose-demo-app-design-implementation-guide.md — Uploaded to reMarkable
+

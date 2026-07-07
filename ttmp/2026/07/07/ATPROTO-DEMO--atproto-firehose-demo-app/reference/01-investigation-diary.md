@@ -366,8 +366,8 @@ The user explicitly asked for an intern-facing guide with prose, pseudocode, dia
 
 ## Step 7: Docmgr bookkeeping, validation, and reMarkable upload
 
-(To be completed: relate files, update changelog/tasks, run `docmgr doctor`,
-dry-run + real reMarkable bundle upload.)
+I completed the ticket bookkeeping (related files, changelog, tasks), validated
+with `docmgr doctor`, and uploaded the design doc + diary bundle to reMarkable.
 
 ### Prompt Context
 
@@ -378,32 +378,41 @@ dry-run + real reMarkable bundle upload.)
 **Inferred user intent:** A durable, reviewable deliverable on the reMarkable.
 
 ### What I did
-- (pending)
+- Related 8 source files to the design doc and 6 to the diary (all with `--file-note` reasons).
+- Added 10 tasks and checked all complete; updated the changelog with 4 entries.
+- `docmgr doctor --ticket ATPROTO-DEMO --stale-after 30` → initially 1 warning (4 diary files missing notes), fixed by adding notes, reran → ✅ All checks passed.
+- `remarquee status` → ok; `remarquee cloud account` → wesen@ruinwesen.com.
+- Dry-run bundle upload of design doc + diary → confirmed layout/name/paths.
+- Real bundle upload → `OK: uploaded ATProto Firehose Demo - Design & Implementation Guide.pdf -> /ai/2026/07/07/ATPROTO-DEMO`.
+- Verified: `remarquee cloud ls /ai/2026/07/07/ATPROTO-DEMO --long` lists the PDF.
 
 ### Why
 The ticket-research skill requires bookkeeping + validation + reMarkable delivery as the final handoff.
 
 ### What worked
-- (pending)
+- Doctor passed cleanly after adding the 4 missing file notes.
+- Bundle upload succeeded on the first real attempt (dry-run caught nothing to fix).
 
 ### What didn't work
-- (pending)
+- Doctor initially flagged 4 diary-related files as missing notes — I had written them into the diary frontmatter without Notes. Fixed with `doc relate --file-note`.
 
 ### What I learned
-- (pending)
+- Always include a `Note:` for every `RelatedFiles` entry when hand-writing frontmatter; the doctor enforces it.
+- The remarquee bundle produces a single PDF with a ToC from the markdown headings (`--toc-depth 2`).
 
 ### What was tricky to build
-- (pending)
+- The doctor's "missing_related_file_note" warning points at the doc path, not the file — had to infer which doc's RelatedFiles was incomplete.
 
 ### What warrants a second pair of eyes
-- (pending)
+- Confirm the reMarkable PDF renders the ASCII diagrams and code blocks legibly (pandoc → xelatex).
 
 ### What should be done in the future
-- (pending)
+- If ASCII diagrams render poorly, replace with rendered images (mermaid/graphviz) before re-uploading.
 
 ### Code review instructions
-- `docmgr doctor --ticket ATPROTO-DEMO --stale-after 30` must pass.
-- `remarquee cloud ls /ai/2026/07/07/ATPROTO-DEMO --long --non-interactive` must list the uploaded bundle.
+- `docmgr doctor --ticket ATPROTO-DEMO --stale-after 30` → ✅ All checks passed.
+- `remarquee cloud ls /ai/2026/07/07/ATPROTO-DEMO --long --non-interactive` → lists the bundle PDF.
 
 ### Technical details
-- (pending)
+- reMarkable path: `/ai/2026/07/07/ATPROTO-DEMO/ATProto Firehose Demo - Design & Implementation Guide.pdf`.
+- Bundle = design doc (43 KB, 16 sections) + diary (20 KB, 7 steps).
