@@ -40,3 +40,12 @@ Docmgr bookkeeping complete; doctor passes; uploaded design doc + diary bundle t
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/ttmp/2026/07/07/ATPROTO-DEMO--atproto-firehose-demo-app/design-doc/01-atproto-firehose-demo-app-design-implementation-guide.md — Uploaded to reMarkable
 
+
+## 2026-07-07
+
+Researched OAuth DPoP as replacement for app-password auth; saved indigo oauth-web-demo + SDK reference and an integration sketch to ticket scripts/
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/ttmp/2026/07/07/ATPROTO-DEMO--atproto-firehose-demo-app/scripts/03-oauth-dpop-integration-sketch.go — Sketch for DPoP login flow
+

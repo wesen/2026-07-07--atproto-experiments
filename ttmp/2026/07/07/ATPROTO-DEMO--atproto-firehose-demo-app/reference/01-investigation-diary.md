@@ -30,6 +30,8 @@ RelatedFiles:
       Note: Built in Step 3; verified in Step 5
     - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/server.go
       Note: HTTP server; built in Step 3
+    - Path: repo://ttmp/2026/07/07/ATPROTO-DEMO--atproto-firehose-demo-app/scripts/03-oauth-dpop-integration-sketch.go
+      Note: OAuth DPoP integration sketch (Phase 5 follow-up)
 ExternalSources:
     - https://atproto.com/specs/sync
     - https://github.com/bluesky-social/indigo
@@ -39,6 +41,7 @@ LastUpdated: 2026-07-07T00:00:00Z
 WhatFor: Record how the demo was built, what failed, and how to continue.
 WhenToUse: Read before resuming work on ATPROTO-DEMO.
 ---
+
 
 
 
