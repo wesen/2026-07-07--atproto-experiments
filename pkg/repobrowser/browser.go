@@ -103,28 +103,51 @@ type RecordSummary struct {
 	Rkey string `json:"rkey"`
 }
 
+// listRecordsRaw is the generic JSON shape of the listRecords response,
+// using json.RawMessage for the value so ANY collection decodes (including
+// custom Lexicons like dev.hypercard.* that indigo has not registered).
+type listRecordsRaw struct {
+	Cursor  *string `json:"cursor,omitempty"`
+	Records []struct {
+		Cid   string          `json:"cid"`
+		Uri   string          `json:"uri"`
+		Value json.RawMessage `json:"value"`
+	} `json:"records"`
+}
+
 // ListRecords calls com.atproto.repo.listRecords for a collection, paginated.
-// It returns summaries (uri/cid/rkey) plus the next cursor.
+// It returns summaries (uri/cid/rkey) plus the next cursor. Uses a raw JSON
+// decode so it works for any collection, even custom Lexicons indigo does not
+// register a Go type for.
 func (b *Browser) ListRecords(ctx context.Context, identifier, collection, cursor string, limit int64, authed util.LexClient) ([]RecordSummary, string, error) {
 	c, _, err := b.pdsClient(ctx, identifier, authed)
 	if err != nil {
 		return nil, "", err
 	}
-	out, err := comatproto.RepoListRecords(ctx, c, collection, cursor, limit, identifier, false)
-	if err != nil {
+	params := map[string]any{
+		"collection": collection,
+		"repo":       identifier,
+		"limit":      limit,
+		"reverse":    false,
+	}
+	if cursor != "" {
+		params["cursor"] = cursor
+	}
+	var raw listRecordsRaw
+	if err := c.LexDo(ctx, util.Query, "", "com.atproto.repo.listRecords", params, nil, &raw); err != nil {
 		return nil, "", fmt.Errorf("listRecords: %w", err)
 	}
-	summaries := make([]RecordSummary, 0, len(out.Records))
-	for _, r := range out.Records {
+	summaries := make([]RecordSummary, 0, len(raw.Records))
+	for _, r := range raw.Records {
 		summaries = append(summaries, RecordSummary{
-			URI: r.Uri,
-			CID: r.Cid,
+			URI:  r.Uri,
+			CID:  r.Cid,
 			Rkey: rkeyFromURI(r.Uri),
 		})
 	}
 	next := ""
-	if out.Cursor != nil {
-		next = *out.Cursor
+	if raw.Cursor != nil {
+		next = *raw.Cursor
 	}
 	return summaries, next, nil
 }
@@ -136,26 +159,35 @@ type RecordDetail struct {
 	Value json.RawMessage `json:"value"`
 }
 
+// getRecordRaw is the generic JSON shape of the getRecord response.
+type getRecordRaw struct {
+	Cid   *string         `json:"cid,omitempty"`
+	Uri   string          `json:"uri"`
+	Value json.RawMessage `json:"value"`
+}
+
 // GetRecord calls com.atproto.repo.getRecord for a single record. The value
-// is decoded to raw JSON for the UI to render.
+// is decoded as raw JSON so it works for any collection, including custom
+// Lexicons indigo does not register a Go type for.
 func (b *Browser) GetRecord(ctx context.Context, identifier, collection, rkey string, authed util.LexClient) (*RecordDetail, error) {
 	c, _, err := b.pdsClient(ctx, identifier, authed)
 	if err != nil {
 		return nil, err
 	}
-	out, err := comatproto.RepoGetRecord(ctx, c, "", collection, identifier, rkey)
-	if err != nil {
+	params := map[string]any{
+		"collection": collection,
+		"repo":       identifier,
+		"rkey":       rkey,
+	}
+	var raw getRecordRaw
+	if err := c.LexDo(ctx, util.Query, "", "com.atproto.repo.getRecord", params, nil, &raw); err != nil {
 		return nil, fmt.Errorf("getRecord: %w", err)
 	}
-	var raw json.RawMessage
-	if out.Value != nil && out.Value.Val != nil {
-		raw, _ = json.Marshal(out.Value.Val)
-	}
 	cid := ""
-	if out.Cid != nil {
-		cid = *out.Cid
+	if raw.Cid != nil {
+		cid = *raw.Cid
 	}
-	return &RecordDetail{URI: out.Uri, CID: cid, Value: raw}, nil
+	return &RecordDetail{URI: raw.Uri, CID: cid, Value: raw.Value}, nil
 }
 
 // rkeyFromURI extracts the record key from an at:// URI:
