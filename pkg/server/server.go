@@ -30,6 +30,7 @@ import (
 	"github.com/wesen/atproto-experiments/pkg/bsky"
 	"github.com/wesen/atproto-experiments/pkg/firehose"
 	"github.com/wesen/atproto-experiments/pkg/oauth"
+	"github.com/wesen/atproto-experiments/pkg/repobrowser"
 
 	lexutil "github.com/bluesky-social/indigo/lex/util"
 )
@@ -38,6 +39,7 @@ import (
 type Server struct {
 	consumer *firehose.Consumer
 	oauth    *oauth.Factory
+	repos    *repobrowser.Browser
 	logger   *slog.Logger
 
 	mu      sync.Mutex
@@ -57,6 +59,7 @@ func NewServer(consumer *firehose.Consumer, oauthFactory *oauth.Factory, logger 
 	s := &Server{
 		consumer: consumer,
 		oauth:    oauthFactory,
+		repos:    repobrowser.NewBrowser(logger),
 		logger:   logger,
 		ringCap:  200,
 	}
@@ -108,6 +111,9 @@ func (s *Server) Handler(spaFS fs.FS) http.Handler {
 	mux.HandleFunc("POST /oauth/logout", s.oauth.HandleLogout)
 	mux.HandleFunc("POST /api/post", s.handlePost)
 	mux.HandleFunc("POST /api/like", s.handleLike)
+	mux.HandleFunc("GET /api/repo/describe", s.handleRepoDescribe)
+	mux.HandleFunc("GET /api/repo/records", s.handleRepoRecords)
+	mux.HandleFunc("GET /api/repo/record", s.handleRepoRecord)
 	mux.HandleFunc("GET /ws", s.handleWS)
 
 	return mux
@@ -228,6 +234,78 @@ func (s *Server) Run(ctx context.Context, addr string, spaFS fs.FS) error {
 	s.logger.Info("HTTP server listening", "addr", addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
+	}
+	return nil
+}
+
+// --- repository browser handlers ---
+
+// handleRepoDescribe returns the repo description (collections, did, handle)
+// for ?repo=<handle or DID>. Uses an unauthenticated PDS client for public
+// reads, or the OAuth session if the repo is the logged-in user.
+func (s *Server) handleRepoDescribe(w http.ResponseWriter, r *http.Request) {
+	repo := r.URL.Query().Get("repo")
+	if repo == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repo query param required"})
+		return
+	}
+	authed := s.repoAuthedClient(r, repo)
+	desc, err := s.repos.Describe(r.Context(), repo, authed)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, desc)
+}
+
+// handleRepoRecords lists records in a collection: ?repo=&collection=&cursor=&limit=
+func (s *Server) handleRepoRecords(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	repo := q.Get("repo")
+	collection := q.Get("collection")
+	if repo == "" || collection == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repo and collection required"})
+		return
+	}
+	limit := int64(50)
+	authed := s.repoAuthedClient(r, repo)
+	records, next, err := s.repos.ListRecords(r.Context(), repo, collection, q.Get("cursor"), limit, authed)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"records": records, "cursor": next})
+}
+
+// handleRepoRecord fetches a single record: ?repo=&collection=&rkey=
+func (s *Server) handleRepoRecord(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	repo := q.Get("repo")
+	collection := q.Get("collection")
+	rkey := q.Get("rkey")
+	if repo == "" || collection == "" || rkey == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repo, collection, rkey required"})
+		return
+	}
+	authed := s.repoAuthedClient(r, repo)
+	detail, err := s.repos.GetRecord(r.Context(), repo, collection, rkey, authed)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+// repoAuthedClient returns the OAuth session's client if the requested repo
+// matches the logged-in account's DID, so the user browses their own repo with
+// their token. Returns nil for other repos (public unauthenticated reads).
+func (s *Server) repoAuthedClient(r *http.Request, repo string) lexutil.LexClient {
+	api, err := s.oauth.ResumeClient(r)
+	if err != nil {
+		return nil
+	}
+	if api.AccountDID != nil && api.AccountDID.String() == repo {
+		return api
 	}
 	return nil
 }

@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Provider, useDispatch } from 'react-redux'
 import { store, sessionFromStatus, type AppDispatch } from './store'
 import { useFirehose } from './useFirehose'
 import { Feed } from './Feed'
 import { AccountPanel } from './AccountPanel'
+import { RepoBrowser } from './RepoBrowser'
 
 // useSessionStatus fetches /api/status on mount and reflects the OAuth
 // session state (set after the /oauth/callback redirect lands on /).
@@ -20,18 +21,25 @@ function useSessionStatus() {
 function App() {
   useFirehose()
   useSessionStatus()
+  const [tab, setTab] = useState<'feed' | 'repo'>('feed')
   return (
     <div className="app">
       <header>
         <h1>ATProto Firehose Demo</h1>
-        <p>
-          A learning app that subscribes to the Bluesky firehose and lets you
-          post from your own account.
-        </p>
+        <nav className="tabs">
+          <button className={tab === 'feed' ? 'tab sel' : 'tab'} onClick={() => setTab('feed')}>Firehose</button>
+          <button className={tab === 'repo' ? 'tab sel' : 'tab'} onClick={() => setTab('repo')}>Repository</button>
+        </nav>
       </header>
       <main>
-        <Feed />
-        <AccountPanel />
+        {tab === 'feed' ? (
+          <>
+            <Feed />
+            <AccountPanel />
+          </>
+        ) : (
+          <RepoBrowser />
+        )}
       </main>
       <footer>
         <a href="https://atproto.com/specs/sync">atproto sync spec</a> ·{' '}
