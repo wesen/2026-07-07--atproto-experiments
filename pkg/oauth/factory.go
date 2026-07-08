@@ -32,6 +32,10 @@ var defaultScopes = []string{
 	"atproto",
 	"repo:app.bsky.feed.post?action=create",
 	"repo:app.bsky.feed.like?action=create",
+	// Fine-grained scope to publish socially-shared JS plugins (see
+	// pkg/plugins). Limits the token to creating dev.atproto-demo.plugin
+	// records only; no delete/update.
+	"repo:dev.atproto-demo.plugin?action=create",
 }
 
 // Factory owns the OAuth client app, a persistent session store, and the

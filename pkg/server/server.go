@@ -30,6 +30,7 @@ import (
 	"github.com/wesen/atproto-experiments/pkg/bsky"
 	"github.com/wesen/atproto-experiments/pkg/firehose"
 	"github.com/wesen/atproto-experiments/pkg/oauth"
+	"github.com/wesen/atproto-experiments/pkg/plugins"
 	"github.com/wesen/atproto-experiments/pkg/repobrowser"
 
 	lexutil "github.com/bluesky-social/indigo/lex/util"
@@ -46,6 +47,11 @@ type Server struct {
 	ring    []firehose.Post // bounded ring buffer of recent posts
 	ringCap int
 
+	// pluginRing holds recently-seen dev.atproto-demo.plugin records from the
+	// firehose, for the /api/plugins/feed endpoint (ticket PLUGIN-SHARING).
+	pluginRing []plugins.PluginSummary
+	pluginCap  int
+
 	wsSubs  sync.Map // map[int]chan firehose.Post
 	nextSub atomic.Int64
 }
@@ -57,17 +63,22 @@ func NewServer(consumer *firehose.Consumer, oauthFactory *oauth.Factory, logger 
 		logger = slog.Default().With("system", "server")
 	}
 	s := &Server{
-		consumer: consumer,
-		oauth:    oauthFactory,
-		repos:    repobrowser.NewBrowser(logger),
-		logger:   logger,
-		ringCap:  200,
+		consumer:  consumer,
+		oauth:     oauthFactory,
+		repos:     repobrowser.NewBrowser(logger),
+		logger:    logger,
+		ringCap:    200,
+		pluginCap: 200,
 	}
 	// Subscribe the server to the firehose so it can (a) keep the ring
 	// buffer fresh and (b) fan out to browser WebSockets.
 	sub, cancel := consumer.Subscribe()
 	_ = cancel // kept alive for the server's lifetime
 	go s.pump(sub)
+	// Subscribe to plugin records for the plugin feed ring buffer.
+	pluginSub, pluginCancel := consumer.SubscribePlugins()
+	_ = pluginCancel
+	go s.pumpPlugins(pluginSub)
 	return s
 }
 
@@ -89,6 +100,31 @@ func (s *Server) pump(sub <-chan firehose.Post) {
 			}
 			return true
 		})
+	}
+}
+
+// pumpPlugins ingests plugin summaries from the firehose into the plugin
+// ring buffer. Unlike posts, plugins are not fanned out over WebSocket in
+// v1; the browser polls /api/plugins/feed.
+func (s *Server) pumpPlugins(sub <-chan plugins.PluginSummary) {
+	for p := range sub {
+		s.mu.Lock()
+		if p.Action == "delete" {
+			// drop deleted plugins from the ring
+			filtered := s.pluginRing[:0]
+			for _, e := range s.pluginRing {
+				if e.URI != p.URI {
+					filtered = append(filtered, e)
+				}
+			}
+			s.pluginRing = filtered
+		} else {
+			s.pluginRing = append(s.pluginRing, p)
+			if len(s.pluginRing) > s.pluginCap {
+				s.pluginRing = s.pluginRing[len(s.pluginRing)-s.pluginCap:]
+			}
+		}
+		s.mu.Unlock()
 	}
 }
 
@@ -115,6 +151,12 @@ func (s *Server) Handler(spaFS fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/repo/records", s.handleRepoRecords)
 	mux.HandleFunc("GET /api/repo/record", s.handleRepoRecord)
 	mux.HandleFunc("GET /ws", s.handleWS)
+
+	// Plugin sharing endpoints (ticket PLUGIN-SHARING).
+	mux.HandleFunc("POST /api/plugins/publish", s.handlePublishPlugin)
+	mux.HandleFunc("GET /api/plugins/feed", s.handlePluginFeed)
+	mux.HandleFunc("GET /api/plugins/list", s.handleListPlugins)
+	mux.HandleFunc("GET /api/plugins/record", s.handleGetPlugin)
 
 	return mux
 }
@@ -308,4 +350,111 @@ func (s *Server) repoAuthedClient(r *http.Request, repo string) lexutil.LexClien
 		return api
 	}
 	return nil
+}
+
+// --- plugin sharing handlers (ticket PLUGIN-SHARING) ---
+
+type publishPluginRequest struct {
+	Title        string             `json:"title"`
+	Description  string             `json:"description"`
+	Source       string             `json:"source"`
+	Version      string             `json:"version"`
+	PackageIDs   []string           `json:"packageIds"`
+	Capabilities *plugins.Capabilities `json:"capabilities"`
+	Hooks        *plugins.Hooks     `json:"hooks"`
+	HomeSurface  string             `json:"homeSurface"`
+	License      string             `json:"license"`
+}
+
+// handlePublishPlugin writes a dev.atproto-demo.plugin record to the logged-in
+// user's repo via com.atproto.repo.createRecord, using the raw LexDo path
+// (no generated Go type for the custom Lexicon).
+func (s *Server) handlePublishPlugin(w http.ResponseWriter, r *http.Request) {
+	api, did, ok := s.authedClient(w, r)
+	if !ok {
+		return
+	}
+	var req publishPluginRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.Title == "" || req.Source == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title and source are required"})
+		return
+	}
+	if len(req.PackageIDs) == 0 {
+		req.PackageIDs = []string{"ui"}
+	}
+	if req.Capabilities == nil {
+		req.Capabilities = &plugins.Capabilities{Domain: []string{"feed"}, System: []string{}}
+	}
+	if req.HomeSurface == "" {
+		req.HomeSurface = "panel"
+	}
+	rec := plugins.NewPublishRecord(req.Title, req.Source, req.PackageIDs, req.Capabilities)
+	rec.Description = req.Description
+	rec.Version = req.Version
+	rec.Hooks = req.Hooks
+	rec.HomeSurface = req.HomeSurface
+	rec.License = req.License
+	out, err := plugins.Publish(r.Context(), api, did, rec)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handlePluginFeed returns recently-seen plugin summaries from the firehose
+// ring buffer, newest first. Public (unauthenticated).
+func (s *Server) handlePluginFeed(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	pluginsOut := make([]plugins.PluginSummary, len(s.pluginRing))
+	copy(pluginsOut, s.pluginRing)
+	s.mu.Unlock()
+	// newest first
+	for i, j := 0, len(pluginsOut)-1; i < j; i, j = i+1, j-1 {
+		pluginsOut[i], pluginsOut[j] = pluginsOut[j], pluginsOut[i]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"plugins": pluginsOut})
+}
+
+// handleListPlugins lists dev.atproto-demo.plugin records in a repo:
+// ?repo=<did or handle>&cursor=. Reuses the repo browser's raw-JSON
+// ListRecords so any collection decodes. Public (unauthenticated).
+func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	repoID := q.Get("repo")
+	if repoID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repo query param required"})
+		return
+	}
+	authed := s.repoAuthedClient(r, repoID)
+	records, next, err := s.repos.ListRecords(r.Context(), repoID, plugins.NSID, q.Get("cursor"), 50, authed)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"records": records, "cursor": next})
+}
+
+// handleGetPlugin fetches a single plugin record's full value (including
+// source): ?repo=<did or handle>&rkey=<rkey>. Reuses the repo browser's
+// raw-JSON GetRecord. Public (unauthenticated).
+func (s *Server) handleGetPlugin(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	repoID := q.Get("repo")
+	rkey := q.Get("rkey")
+	if repoID == "" || rkey == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repo and rkey required"})
+		return
+	}
+	authed := s.repoAuthedClient(r, repoID)
+	detail, err := s.repos.GetRecord(r.Context(), repoID, plugins.NSID, rkey, authed)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
 }

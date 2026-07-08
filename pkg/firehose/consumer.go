@@ -29,6 +29,8 @@ import (
 	"github.com/bluesky-social/indigo/events"
 	"github.com/bluesky-social/indigo/events/schedulers/parallel"
 	"github.com/gorilla/websocket"
+
+	"github.com/wesen/atproto-experiments/pkg/plugins"
 )
 
 // Post is the decoded, frontend-friendly representation of a single
@@ -63,10 +65,16 @@ type Consumer struct {
 	relayURL string
 	logger   *slog.Logger
 
-	mu          sync.RWMutex
-	subs        map[int]chan Post
-	nextSubID   int
-	lastSeq     int64
+	mu            sync.RWMutex
+	subs          map[int]chan Post
+	nextSubID     int
+	lastSeq       int64
+
+	// Plugin subscribers receive dev.atproto-demo.plugin records (see ticket
+	// PLUGIN-SHARING). Separate from post subs so a plugin feed consumer
+	// does not pay for post decoding, and vice versa.
+	pluginSubs      map[int]chan plugins.PluginSummary
+	nextPluginSubID int
 }
 
 // NewConsumer creates a Consumer for the given relay URL.
@@ -77,9 +85,10 @@ func NewConsumer(relayURL string, logger *slog.Logger) *Consumer {
 		logger = slog.Default().With("system", "firehose")
 	}
 	return &Consumer{
-		relayURL: relayURL,
-		logger:   logger,
-		subs:     make(map[int]chan Post),
+		relayURL:    relayURL,
+		logger:      logger,
+		subs:        make(map[int]chan Post),
+		pluginSubs:  make(map[int]chan plugins.PluginSummary),
 	}
 }
 
@@ -105,6 +114,29 @@ func (c *Consumer) Subscribe() (<-chan Post, func()) {
 	return ch, cancel
 }
 
+// SubscribePlugins registers a subscriber that receives every decoded
+// dev.atproto-demo.plugin record. The returned channel is buffered; a slow
+// consumer is dropped. The returned cancel func deregisters and closes the
+// channel.
+func (c *Consumer) SubscribePlugins() (<-chan plugins.PluginSummary, func()) {
+	c.mu.Lock()
+	id := c.nextPluginSubID
+	c.nextPluginSubID++
+	ch := make(chan plugins.PluginSummary, 64)
+	c.pluginSubs[id] = ch
+	c.mu.Unlock()
+
+	cancel := func() {
+		c.mu.Lock()
+		if ch, ok := c.pluginSubs[id]; ok {
+			delete(c.pluginSubs, id)
+			close(ch)
+		}
+		c.mu.Unlock()
+	}
+	return ch, cancel
+}
+
 // LastSeq returns the highest sequence number observed so far.
 func (c *Consumer) LastSeq() int64 {
 	c.mu.RLock()
@@ -120,6 +152,27 @@ func (c *Consumer) broadcast(p Post) {
 	// snapshot subscriber channels to avoid holding the lock during sends
 	chans := make([]chan Post, 0, len(c.subs))
 	for _, ch := range c.subs {
+		chans = append(chans, ch)
+	}
+	c.mu.Unlock()
+
+	for _, ch := range chans {
+		select {
+		case ch <- p:
+		default:
+			// drop on slow consumer; do not block the firehose
+		}
+	}
+}
+
+// broadcastPlugin fans a decoded plugin summary out to all plugin subscribers.
+func (c *Consumer) broadcastPlugin(p plugins.PluginSummary) {
+	c.mu.Lock()
+	if p.Seq > c.lastSeq {
+		c.lastSeq = p.Seq
+	}
+	chans := make([]chan plugins.PluginSummary, 0, len(c.pluginSubs))
+	for _, ch := range c.pluginSubs {
 		chans = append(chans, ch)
 	}
 	c.mu.Unlock()
@@ -210,51 +263,93 @@ func (c *Consumer) handleCommit(ctx context.Context, evt *comatproto.SyncSubscri
 		}
 		// Only materialize records we care about. Filtering by collection
 		// here is the single biggest bandwidth/CPU win for a demo.
-		if collection.String() != "app.bsky.feed.post" {
-			continue
+		switch collection.String() {
+		case "app.bsky.feed.post":
+			c.decodePost(ctx, r, evt, op, collection, rkey)
+		case plugins.NSID: // "dev.atproto-demo.plugin"
+			c.decodePlugin(ctx, r, evt, op, collection, rkey)
 		}
-
-		p := Post{
-			Did:       evt.Repo,
-			Rkey:      rkey.String(),
-			URI:       fmt.Sprintf("at://%s/%s", evt.Repo, op.Path),
-			Action:    op.Action,
-			Seq:       evt.Seq,
-			Time:      evt.Time,
-			CreatedAt: evt.Time,
-		}
-		if op.Cid != nil {
-			p.CID = op.Cid.String()
-		}
-
-		// For creates/updates, decode the record bytes from the CAR slice.
-		// atdata.UnmarshalCBOR returns a generic map[string]any; we pull the
-		// fields we care about by hand. To decode into the fully-typed
-		// appbsky.FeedPost struct instead, re-marshal the map to JSON
-		// (atdata's Bytes/CIDLink types implement MarshalJSON) and run
-		// json.Unmarshal into *appbsky.FeedPost.
-		if op.Action == "create" || op.Action == "update" {
-			recBytes, _, err := r.GetRecordBytes(ctx, collection, rkey)
-			if err != nil {
-				c.logger.Debug("failed to get record bytes", "path", op.Path, "error", err)
-				continue
-			}
-			rec, err := atdata.UnmarshalCBOR(recBytes)
-			if err != nil {
-				c.logger.Debug("failed to unmarshal record", "path", op.Path, "error", err)
-				continue
-			}
-			p.Text = stringField(rec, "text")
-			if v := stringField(rec, "createdAt"); v != "" {
-				p.CreatedAt = v
-			}
-			p.Langs = stringSliceField(rec, "langs")
-			p.Tags = stringSliceField(rec, "tags")
-		}
-
-		c.broadcast(p)
 	}
 	return nil
+}
+
+// decodePost builds a Post from the commit op and broadcasts it.
+func (c *Consumer) decodePost(ctx context.Context, r *repo.Repo, evt *comatproto.SyncSubscribeRepos_Commit, op *comatproto.SyncSubscribeRepos_RepoOp, collection syntax.NSID, rkey syntax.RecordKey) {
+	p := Post{
+		Did:       evt.Repo,
+		Rkey:      rkey.String(),
+		URI:       fmt.Sprintf("at://%s/%s", evt.Repo, op.Path),
+		Action:    op.Action,
+		Seq:       evt.Seq,
+		Time:      evt.Time,
+		CreatedAt: evt.Time,
+	}
+	if op.Cid != nil {
+		p.CID = op.Cid.String()
+	}
+
+	// For creates/updates, decode the record bytes from the CAR slice.
+	// atdata.UnmarshalCBOR returns a generic map[string]any; we pull the
+	// fields we care about by hand. To decode into the fully-typed
+	// appbsky.FeedPost struct instead, re-marshal the map to JSON
+	// (atdata's Bytes/CIDLink types implement MarshalJSON) and run
+	// json.Unmarshal into *appbsky.FeedPost.
+	if op.Action == "create" || op.Action == "update" {
+		recBytes, _, err := r.GetRecordBytes(ctx, collection, rkey)
+		if err != nil {
+			c.logger.Debug("failed to get record bytes", "path", op.Path, "error", err)
+			return
+		}
+		rec, err := atdata.UnmarshalCBOR(recBytes)
+		if err != nil {
+			c.logger.Debug("failed to unmarshal record", "path", op.Path, "error", err)
+			return
+		}
+		p.Text = stringField(rec, "text")
+		if v := stringField(rec, "createdAt"); v != "" {
+			p.CreatedAt = v
+		}
+		p.Langs = stringSliceField(rec, "langs")
+		p.Tags = stringSliceField(rec, "tags")
+	}
+
+	c.broadcast(p)
+}
+
+// decodePlugin builds a PluginSummary from the commit op and broadcasts it.
+// Uses plugins.DecodeSummary to read metadata fields from the raw CBOR map;
+// the source is intentionally not read (fetch on demand). This is the
+// raw-JSON decode lesson from ticket REPO-BROWSER: do not use indigo's typed
+// LexiconTypeDecoder, which rejects unregistered $type values.
+func (c *Consumer) decodePlugin(ctx context.Context, r *repo.Repo, evt *comatproto.SyncSubscribeRepos_Commit, op *comatproto.SyncSubscribeRepos_RepoOp, collection syntax.NSID, rkey syntax.RecordKey) {
+	summary := plugins.PluginSummary{
+		URI:       fmt.Sprintf("at://%s/%s", evt.Repo, op.Path),
+		AuthorDID: evt.Repo,
+		Rkey:      rkey.String(),
+		Action:    op.Action,
+		Seq:       evt.Seq,
+		Time:      evt.Time,
+	}
+	if op.Cid != nil {
+		summary.CID = op.Cid.String()
+	}
+	// For creates/updates, decode metadata from the CAR slice. Deletes carry
+	// no record bytes; we broadcast a minimal summary so the feed can remove
+	// the plugin from its catalog.
+	if op.Action == "create" || op.Action == "update" {
+		recBytes, _, err := r.GetRecordBytes(ctx, collection, rkey)
+		if err != nil {
+			c.logger.Debug("failed to get plugin record bytes", "path", op.Path, "error", err)
+			return
+		}
+		rec, err := atdata.UnmarshalCBOR(recBytes)
+		if err != nil {
+			c.logger.Debug("failed to unmarshal plugin record", "path", op.Path, "error", err)
+			return
+		}
+		summary = plugins.DecodeSummary(evt.Repo, summary.URI, summary.CID, rkey.String(), op.Action, evt.Seq, evt.Time, rec)
+	}
+	c.broadcastPlugin(summary)
 }
 
 func backoff(retries int) time.Duration {
