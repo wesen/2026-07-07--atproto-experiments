@@ -53,15 +53,17 @@ var firehoseCmd = &cobra.Command{
 }
 
 var (
-	flagRelay        string
-	flagAddr         string
+	flagRelay         string
+	flagAddr          string
 	flagSessionSecret string
+	flagOAuthStore    string
 )
 
 func init() {
 	serveCmd.Flags().StringVar(&flagRelay, "relay", "https://relay1.us-east.bsky.network", "relay firehose URL")
 	serveCmd.Flags().StringVar(&flagAddr, "addr", ":8080", "HTTP listen address")
 	serveCmd.Flags().StringVar(&flagSessionSecret, "session-secret", "dev-insecure-secret-change-me", "secret used to sign OAuth session cookies (use openssl rand -hex 16)")
+	serveCmd.Flags().StringVar(&flagOAuthStore, "oauth-store", "./oauth-store", "directory used to persist OAuth sessions and auth requests across restarts")
 	firehoseCmd.Flags().StringVar(&flagRelay, "relay", "https://relay1.us-east.bsky.network", "relay firehose URL")
 
 	rootCmd.AddCommand(serveCmd)
@@ -86,7 +88,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// back to. For localhost dev, 127.0.0.1:PORT is used (the atproto
 	// localhost client_id special-case means no public hostname is needed).
 	callbackURL := "http://127.0.0.1" + flagAddr + "/oauth/callback"
-	oauthFactory := oauth.NewFactory(callbackURL, flagSessionSecret, logger)
+	oauthFactory, err := oauth.NewFactory(callbackURL, flagSessionSecret, flagOAuthStore, logger)
+	if err != nil {
+		return fmt.Errorf("create oauth factory: %w", err)
+	}
+	defer oauthFactory.Close()
 	srv := server.NewServer(consumer, oauthFactory, logger)
 
 	// Start the firehose consumer in the background.

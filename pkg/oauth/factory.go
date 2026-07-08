@@ -34,29 +34,47 @@ var defaultScopes = []string{
 	"repo:app.bsky.feed.like?action=create",
 }
 
-// Factory owns the OAuth client app, an in-memory session store, and the
+// Factory owns the OAuth client app, a persistent session store, and the
 // signed cookie store used to identify browser sessions across requests.
 type Factory struct {
 	Oauth       *oauth.ClientApp
 	cookieStore *sessions.CookieStore
+	store       *FileStore
 	logger      *slog.Logger
 }
 
 // NewFactory creates an OAuth factory for localhost development. The
 // callbackURL must be reachable by the PDS redirect (use 127.0.0.1:PORT for
 // local dev; the atproto localhost client_id special-case means no public
-// hostname is required). sessionSecret signs the browser cookie.
-func NewFactory(callbackURL, sessionSecret string, logger *slog.Logger) *Factory {
+// hostname is required). sessionSecret signs the browser cookie. storeDir is
+// the directory used to persist OAuth sessions and in-flight auth requests to
+// disk so they survive process restarts; it is created if missing.
+func NewFactory(callbackURL, sessionSecret, storeDir string, logger *slog.Logger) (*Factory, error) {
 	if logger == nil {
 		logger = slog.Default().With("system", "oauth")
 	}
+	store, err := NewFileStore(storeDir, logger)
+	if err != nil {
+		return nil, fmt.Errorf("oauth store: %w", err)
+	}
 	config := oauth.NewLocalhostConfig(callbackURL, defaultScopes)
-	app := oauth.NewClientApp(&config, oauth.NewMemStore())
+	app := oauth.NewClientApp(&config, store)
 	return &Factory{
 		Oauth:       app,
 		cookieStore: sessions.NewCookieStore([]byte(sessionSecret)),
+		store:       store,
 		logger:      logger,
+	}, nil
+}
+
+// Close stops the store's background garbage collector. Safe to call multiple
+// times and safe to skip (process exit reclaims the goroutine); calling it on
+// graceful shutdown keeps logs clean.
+func (f *Factory) Close() error {
+	if f.store != nil {
+		return f.store.Close()
 	}
+	return nil
 }
 
 // cookieName is the signed cookie holding the account DID + session ID.
