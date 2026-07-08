@@ -1,1 +1,1 @@
-{"root":["./src/AccountPanel.tsx","./src/App.tsx","./src/Feed.tsx","./src/RepoBrowser.tsx","./src/api.ts","./src/main.tsx","./src/store.ts","./src/types.ts","./src/useFirehose.ts"],"version":"5.9.3"}
+{"root":["./src/AccountPanel.tsx","./src/App.tsx","./src/Feed.tsx","./src/PublishPlugin.tsx","./src/RepoBrowser.tsx","./src/api.ts","./src/main.tsx","./src/store.ts","./src/types.ts","./src/useFirehose.ts"],"version":"5.9.3"}

@@ -1,6 +1,36 @@
 // Thin fetch wrapper for the Go backend's /api endpoints.
 import type { Post, Status } from './types'
 
+export interface PluginSummary {
+  uri: string
+  cid: string
+  authorDID: string
+  rkey: string
+  title: string
+  description?: string
+  version?: string
+  packageIds?: string[]
+  capabilities?: { domain?: string[]; system?: string[] }
+  hooks?: { feedMiddleware?: boolean; incomingFeedMessage?: boolean }
+  homeSurface?: string
+  license?: string
+  action: string
+  seq: number
+  time: string
+}
+
+export interface PublishPluginInput {
+  title: string
+  description?: string
+  source: string
+  version?: string
+  packageIds: string[]
+  capabilities: { domain: string[]; system: string[] }
+  hooks?: { feedMiddleware?: boolean; incomingFeedMessage?: boolean }
+  homeSurface?: string
+  license?: string
+}
+
 const base = '/api'
 
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -32,4 +62,21 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uri, cid }),
     }),
+  // --- plugin sharing (ticket PLUGIN-SHARING) ---
+  publishPlugin: (input: PublishPluginInput) =>
+    jsonFetch<{ uri: string; cid: string }>(`${base}/plugins/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  pluginFeed: () =>
+    jsonFetch<{ plugins: PluginSummary[] }>(`${base}/plugins/feed`),
+  listPlugins: (repo: string, cursor?: string) =>
+    jsonFetch<{ records: unknown[]; cursor: string }>(
+      `${base}/plugins/list?repo=${encodeURIComponent(repo)}${cursor ? `&cursor=${cursor}` : ''}`,
+    ),
+  getPlugin: (repo: string, rkey: string) =>
+    jsonFetch<{ uri: string; cid: string; value: Record<string, unknown> }>(
+      `${base}/plugins/record?repo=${encodeURIComponent(repo)}&rkey=${encodeURIComponent(rkey)}`,
+    ),
 }
