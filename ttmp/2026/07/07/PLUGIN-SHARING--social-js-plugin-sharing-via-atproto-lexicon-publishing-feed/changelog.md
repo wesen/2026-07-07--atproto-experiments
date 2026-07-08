@@ -40,3 +40,12 @@ Re-uploaded design+diary bundle to reMarkable (with implementation steps)
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/ttmp/2026/07/07/PLUGIN-SHARING--social-js-plugin-sharing-via-atproto-lexicon-publishing-feed/reference/01-investigation-diary.md — Impl diary Steps 2-3
 
+
+## 2026-07-08
+
+VERIFIED end-to-end: published 2 real dev.atproto-demo.plugin records (Greeting, Echo Box) via OAuth session; firehose decoded them into the feed immediately
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/cmd/publish-plugin/main.go — publish tool
+

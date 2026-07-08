@@ -49,3 +49,12 @@ Merged QuickJS runtime INTO atproto app (one app, no proxy) + firehose middlewar
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/components/FirehosePlugins.tsx — Firehose middleware
 
+
+## 2026-07-08
+
+VERIFIED end-to-end: discovered published Greeting plugin on the feed, bookmarked it from Discover, launched it -> runs in QuickJS (renders + interactive Next-greeting cycles); 0 console errors
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/components/PluginTab.tsx — round trip
+
