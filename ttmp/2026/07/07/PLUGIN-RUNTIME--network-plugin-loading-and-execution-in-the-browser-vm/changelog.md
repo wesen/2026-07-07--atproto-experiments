@@ -40,3 +40,12 @@ Re-uploaded design+diary bundle to reMarkable (with implementation steps)
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/ttmp/2026/07/07/PLUGIN-RUNTIME--network-plugin-loading-and-execution-in-the-browser-vm/reference/01-investigation-diary.md — Impl diary Step 2
 
+
+## 2026-07-07
+
+Merged QuickJS runtime INTO atproto app (one app, no proxy) + firehose middleware: 4 feed plugins filter the live firehose via feed.apply. Verified Keyword Lens 60/60->0/60->restore. (commit a8c0219)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/components/FirehosePlugins.tsx — Firehose middleware
+

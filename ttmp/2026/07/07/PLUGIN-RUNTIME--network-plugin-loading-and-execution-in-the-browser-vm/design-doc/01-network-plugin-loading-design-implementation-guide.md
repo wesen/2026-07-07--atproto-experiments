@@ -37,6 +37,12 @@ RelatedFiles:
       Note: fetchFeed/loadNetworkSource/clampCapabilities/ensureSource
     - Path: abs:///home/manuel/code/wesen/2026-07-07--browser-js-inject-vm/src/plugins/useNetworkFeed.ts
       Note: poller + bookmark hooks
+    - Path: repo://frontend/src/Feed.tsx
+      Note: Maps atproto Post -> FeedPost, caps to 60, renders FirehosePlugins
+    - Path: repo://frontend/src/components/FirehosePlugins.tsx
+      Note: Firehose middleware sidebar + pipeline over live posts
+    - Path: repo://frontend/src/components/PluginTab.tsx
+      Note: Merged Plugins tab (catalog + launch)
 ExternalSources:
     - https://atproto.com/specs/repository
     - https://atproto.com/specs/at-uri-scheme
@@ -46,6 +52,9 @@ LastUpdated: 2026-07-07T00:00:00Z
 WhatFor: Onboarding an intern to build the runtime/execution side of social JS plugin sharing.
 WhenToUse: Read this first when joining the PLUGIN-RUNTIME ticket.
 ---
+
+
+
 
 
 

@@ -164,3 +164,114 @@ The load seam is `loadRuntimeBundle(code:string)`; reusing it unchanged keeps th
 ### Technical details
 - Commit `83d0cb9` (browser-js-inject-vm: network loader + bookmarks + catalog).
 - Full publish→discover→bookmark→run round-trip still needs a human OAuth login to publish the first plugin record (or an explicit app-password publish test).
+
+## Step 3: Merge the runtime INTO the atproto app (one app, no proxy)
+
+The user flagged that PLUGIN-RUNTIME had been built as a SECOND app
+(browser-js-inject-vm) talking to the atproto server via a Vite proxy —
+not "merged into the same app." This step vendors the QuickJS runtime into
+the atproto-experiments frontend so everything is one app: single origin,
+single Go binary (go:embed), no proxy.
+
+### Prompt Context
+**User prompt (verbatim):** "wait, didn't we merge both into the same app? this seems to be the original app?"
+
+**Assistant interpretation:** Stop the two-app split; merge the plugin runtime into the atproto-experiments frontend.
+
+**Inferred user intent:** One unified app that publishes, discovers, bookmarks, AND runs plugins.
+
+### What I did
+- Verified the runtime is React-18-compatible (only stable hooks; no React 19 features) → no version upgrade needed.
+- Added quickjs-emscripten deps to atproto frontend package.json.
+- Vendored `src/runtime` + `src/ui` + `src/host` (~4600 lines, 33 files, tests excluded) from browser-js-inject-vm.
+- Added `src/vite-env.d.ts` (?raw module types), `src/features/feed/feedSlice.ts` (satisfies host/store.ts).
+- Ported `src/plugins/{networkLoader,bookmarks,useNetworkFeed}.ts` SAME-ORIGIN (removed the Vite proxy — fetch /api/plugins/* directly).
+- Created `src/plugins/manifest.ts` (Counter built-in) + `src/components/PluginTab.tsx` (catalog + launch via PluginSurfaceHost, nested runtime Redux store).
+- Wired a 4th "Plugins" tab into App.tsx.
+
+### Why
+The backend (firehose, OAuth, publish, feed, repo) lives in atproto-experiments and embeds its frontend via go:embed → that is the natural single-app home. Two apps + a proxy was the wrong shape.
+
+### What worked
+- `tsc --noEmit` clean; `pnpm build` clean.
+- Playwright: Plugins tab renders built-ins; launching Counter runs it IN-PAGE (QuickJS eval + render "Count: 0" + bump → "Count: 1"); 0 console errors.
+
+### What didn't work
+- N/A (clean merge).
+
+### What I learned
+- The runtime store (host/store.ts) and the atproto store can coexist via a NESTED <Provider store={runtimeStore}> around just the Plugins tab: runtime selectors read the runtime store; the rest reads the atproto store. No store merge needed.
+- `?raw` imports need a `vite-env.d.ts` declaring `*.vm.js?raw`; without it tsc errors on the bootstrap/ui-package imports.
+
+### What was tricky to build
+- The two-store bridge: the runtime's `usePluginRuntime`/selectors bind to the nearest Provider. Wrapping only the Plugins tab in the runtime Provider isolates it cleanly.
+
+### What warrants a second pair of eyes
+- The vendored runtime is a frozen copy (no longer shares code with browser-js-inject-vm). Drift is now possible. Consider extracting a shared package later.
+- `registerUiRuntime()` is called at PluginTab module load (once). Confirm it's idempotent across tab switches (it registers into a module-level registry; re-mount should be a no-op).
+
+### What should be done in the future
+- Extract the runtime into a shared package to avoid vendored drift.
+- Bring the SourceViewer (syntax highlighting) over for the source modal.
+
+### Code review instructions
+- `cd frontend && pnpm exec tsc --noEmit && pnpm build`.
+- Playwright: Plugins tab → Launch Counter → bump → count increments.
+
+### Technical details
+- Commit `a8c0219` (merge: vendored runtime + Plugins tab).
+
+## Step 4: Firehose middleware — plugins filter the LIVE firehose
+
+The user asked for plugins loaded in the firehose view to filter/manipulate
+the live feed (like the browser-js-inject-vm SocialFeed demo, but over real
+firehose posts instead of a simulator).
+
+### Prompt Context
+**User prompt (verbatim):** "can we have plugins loaded in the firehose view and have things similar to the demo, with plugins to filter / manipulate the firehose"
+
+**Assistant interpretation:** Wire feed-middleware plugins (feed.apply) into the live firehose view.
+
+**Inferred user intent:** A firehose tab with a plugin sidebar where active plugins filter/manipulate visible posts in real time.
+
+### What I did
+- Ported `src/features/feed/{feedPluginPipeline,useFeedPluginPipeline}.ts` (pure helpers + the runtime-aware pipeline hook).
+- Copied 4 feed-middleware .vm.js plugins (Keyword Lens, Author Mute, Freshness Window, Topic Tagger) into the manifest's FEED_PLUGINS.
+- `src/components/FirehosePlugins.tsx`: sidebar (add/remove feed plugins) + `useFeedPluginPipeline(activeSessions, posts)` + visible-posts list + trace; wrapped in the runtime Provider.
+- `Feed.tsx`: maps atproto Post → FeedPost (`{id:uri, author:did, text, ts, tags}`), caps to 60 (the firehose delivers ~40/s into a 500 buffer; capping bounds the per-tick pipeline cost), renders `<FirehosePlugins posts={feedPosts} />`.
+- No simulator/incoming-message path: the firehose IS the live source; only `feed.apply` is used (plugins filter already-arrived posts; hiddenPostIds/filtered posts).
+
+### Why
+This is the SocialFeed demo's `feed.apply` chain applied to real data. Plugin-local state (query, mute list) lives in the runtime store; editing it reruns the pipeline (pluginStateVersion dependency).
+
+### What worked
+- Playwright: 60 posts streaming; add Keyword Lens → panel renders; type "zzzzz" → 0/60 visible; clear → 60/60 restored; `filteringWorked: true`; 0 console errors.
+- The two-store bridge holds: firehose posts (atproto store) flow in as a prop; pipeline selectors read the runtime store.
+
+### What didn't work
+- N/A.
+
+### What I learned
+- The pipeline re-runs on every firehose post (the atproto store rebuilds the array each tick). Capping to 60 posts keeps each run cheap; for higher volume, debounce the pipeline or use a stable posts-identity (e.g. a version counter).
+- `useFeedPluginPipeline`'s apply path uses only the `posts` prop + runtime-store plugin state; it does NOT touch the vendored feedSlice, so the firehose posts need not be synced into the runtime store.
+
+### What was tricky to build
+- Performance: the live firehose (~40/s) vs the SocialFeed's slow simulator. Solved by capping posts to 60 for the pipeline + display. A real app would debounce.
+- The atproto Post uses `did` as author; Keyword Lens filters by author/text, so a DID fragment works as a filter.
+
+### What warrants a second pair of eyes
+- The 60-post cap is a demo compromise; confirm it's acceptable or implement debouncing for higher-volume relays.
+- Pipeline runs on every post tick even when no plugins are active (the effect deps include `posts`). Could short-circuit when `active.length === 0`.
+
+### What should be done in the future
+- Debounce/throttle the pipeline for high-volume firehoses.
+- Short-circuit the pipeline when no plugins are active (show raw posts).
+- Network feed-middleware plugins (from PLUGIN-SHARING) in the same sidebar.
+- The incoming-message hook for a compose/preview path.
+
+### Code review instructions
+- Playwright: Firehose tab → add Keyword Lens → type a filter → visible count drops; clear → restores.
+- Read `src/components/FirehosePlugins.tsx` + `src/Feed.tsx` (toFeedPost, PIPELINE_CAP).
+
+### Technical details
+- Commit `a8c0219` (firehose middleware, same commit as the merge).
