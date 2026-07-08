@@ -22,3 +22,12 @@ Fixed custom-Lexicon decode: raw JSON via LexDo so any collection (dev.hypercard
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/repobrowser/browser.go — raw JSON value
 
+
+## 2026-07-07
+
+Uploaded design doc + diary bundle to reMarkable at /ai/2026/07/07/REPO-BROWSER
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/ttmp/2026/07/07/REPO-BROWSER--atproto-repository-browser/design-doc/01-repository-browser-design-implementation-guide.md — reMarkable bundle
+
