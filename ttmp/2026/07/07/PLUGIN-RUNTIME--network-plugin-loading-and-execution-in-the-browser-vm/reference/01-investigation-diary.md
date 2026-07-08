@@ -275,3 +275,56 @@ This is the SocialFeed demo's `feed.apply` chain applied to real data. Plugin-lo
 
 ### Technical details
 - Commit `a8c0219` (firehose middleware, same commit as the merge).
+
+## Step 5: Network feed-middleware plugins in the firehose sidebar
+
+Extended the firehose so a PUBLISHED feed-middleware plugin (not built-in)
+can run its feed.apply over the live firehose. This completes the social loop
+for feed middleware: publish -> discover -> bookmark -> filter the live feed.
+
+### Prompt Context
+**User prompt (verbatim):** "continue."
+
+**Assistant interpretation:** Continue with the next steps (network feed-middleware in the firehose sidebar was the natural completion).
+
+**Inferred user intent:** A published feed-middleware plugin should be usable in the firehose, not just standalone apps in the Plugins tab.
+
+### What I did
+- `manifest.ts`: added `hooks?: { feedMiddleware?; incomingFeedMessage? }` to PluginManifestEntry.
+- `networkLoader.ts`: `summaryToEntry` now carries `hooks` from the feed summary onto the entry.
+- `FirehosePlugins.tsx`: the 'Add feed plugin' list = FEED_PLUGINS + bookmarked network plugins whose `hooks.feedMiddleware === true` (marked with a sparkle). `addPlugin` awaits `ensureSource` for network plugins before adding to active, so `bundleCode` is populated before `PluginPanelHost` mounts and calls `loadRuntimeBundle`. Entries resolve via `findPlugin(id) || getCachedEntry(id)` so network plugins (keyed by AT URI) resolve.
+- `publish-plugin`: publishes a 'Firehose Keyword Filter' feed-middleware plugin (declares `hooks.feedMiddleware` + implements `feed.apply`).
+
+### Why
+The firehose sidebar previously only offered built-in feed-middleware plugins. Letting a bookmarked network feed-middleware plugin run there closes the loop: the plugin's `feed.apply` runs over the LIVE firehose posts, not a simulator.
+
+### What worked
+- Playwright: published Firehose Keyword Filter -> firehose feed showed it -> Plugins tab Discover -> bookmarked -> Firehose sidebar now lists it (sparkle) alongside built-ins -> added -> panel rendered input -> typed 'zzzzz' -> 0/60 visible (network feed.apply filtered the live firehose) -> cleared -> 60/60 restored. 0 console errors.
+- The runtime determines hooks from the bundle meta (`getBundleMeta().hooks.feedMiddleware`, computed by the bootstrap checking `typeof __runtimeBundle.feed?.apply === 'function'`), so the published plugin's real `feed.apply` is what makes it eligible — the record's `hooks` field is only the catalog hint.
+
+### What didn't work
+- A stray `publish-plugin` binary was committed by an earlier `go build ./cmd/publish-plugin` (built into the repo root). Removed + gitignored (commit c15b25f).
+
+### What I learned
+- The firehose feed-middleware sidebar and the Plugins-tab launcher share the same session/pipeline machinery; the only addition was (a) including bookmarked network feed-middleware plugins in the add-list and (b) lazy-fetching source on add.
+- A network feed plugin must be BOOKMARKED before it appears in the firehose add-list — the bookmark is the single opt-in gate for both standalone and feed-middleware network plugins.
+
+### What was tricky to build
+- Entry resolution: built-ins resolve via `findPlugin(id)`; network plugins are keyed by their AT URI (which is the entry `id`), so the resolver falls back to `getCachedEntry(id)`. Without this, adding a network feed plugin rendered nothing (`findPlugin` returned undefined).
+- Source timing: `PluginPanelHost` calls `loadRuntimeBundle(..., plugin.bundleCode)` on mount. For a network plugin `bundleCode` is empty until fetched, so `addPlugin` must `await ensureSource(entry)` BEFORE adding to `active` — otherwise the panel mounts with empty code and fails.
+
+### What warrants a second pair of eyes
+- Duplicate publishes accumulate (each `publish-plugin` run creates new records with new rkeys). The feed shows all of them. A dedup-by-title or latest-only view would clean this up for a real catalog.
+- The network feed-middleware plugin gets the `feed` capability via `clampCapabilities`; confirm a malicious `feed.apply` cannot do more than filter/annotate (it returns posts/annotations which the host normalizes — it cannot touch other domains).
+
+### What should be done in the future
+- Dedup the feed/catalog by title or latest version.
+- Short-circuit the pipeline when no plugins are active (avoid per-tick re-renders on the raw feed).
+- CID verification for fetched source.
+
+### Code review instructions
+- Playwright: Plugins tab -> bookmark Firehose Keyword Filter -> Firehose tab -> add it -> type filter -> visible drops.
+- Read `src/components/FirehosePlugins.tsx` (addList, addPlugin, resolveEntry).
+
+### Technical details
+- Commit `9148bd1` (network feed-middleware in firehose) + `c15b25f` (gitignore artifact).

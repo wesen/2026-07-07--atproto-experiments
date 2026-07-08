@@ -58,3 +58,12 @@ VERIFIED end-to-end: discovered published Greeting plugin on the feed, bookmarke
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/components/PluginTab.tsx — round trip
 
+
+## 2026-07-08
+
+Network feed-middleware plugins run in the firehose sidebar: published Firehose Keyword Filter -> discover -> bookmark -> add to firehose -> feed.apply filters live posts (0/60->60/60). (commits 9148bd1, c15b25f)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/components/FirehosePlugins.tsx — network feed-middleware in sidebar
+
