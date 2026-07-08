@@ -9,9 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ipld/dag-cbor": "^10.0.1",
     "@jitl/quickjs-ffi-types": "^0.31.0",
     "@jitl/quickjs-singlefile-mjs-release-sync": "^0.31.0",
     "@reduxjs/toolkit": "^2.5.0",
+    "multiformats": "^14.0.4",
     "quickjs-emscripten": "^0.31.0",
     "quickjs-emscripten-core": "^0.31.0",
     "react": "^18.3.1",

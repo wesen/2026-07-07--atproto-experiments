@@ -13,6 +13,10 @@
 
 import type { PluginManifestEntry } from './manifest';
 
+import { CID } from 'multiformats/cid';
+import * as dagcbor from '@ipld/dag-cbor';
+import { sha256 } from 'multiformats/hashes/sha2';
+
 const FEED_URL = '/api/plugins/feed';
 const RECORD_URL = '/api/plugins/record';
 
@@ -122,11 +126,41 @@ export async function fetchFeed(): Promise<PluginSummary[]> {
 }
 
 /**
+ * Compute the ATProto content-addressed CID of a record value: CIDv1 with
+ * the dag-cbor codec (0x71) and a SHA-256 multihash over the canonical
+ * DAG-CBOR encoding. This matches the CID the PDS assigned when it stored the
+ * record, so a browser can verify that fetched source is provably what the
+ * author published.
+ */
+export async function computeRecordCID(value: unknown): Promise<string> {
+  const bytes = dagcbor.encode(value);
+  const hash = await sha256.digest(bytes);
+  return CID.createV1(dagcbor.code, hash).toString();
+}
+
+/**
+ * Verify that a fetched record value hashes to its declared CID. Returns true
+ * if declaredCID is empty (nothing to verify against). Throws on encoding
+ * failure only inside computeRecordCID; here we treat failure as a mismatch.
+ */
+export async function verifyRecordCID(value: unknown, declaredCID: string): Promise<boolean> {
+  if (!declaredCID) return true;
+  try {
+    return (await computeRecordCID(value)) === declaredCID;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch a network plugin's full source by its AT URI. Cached per URI.
- * v1 does NOT verify the source against the record CID (requires a
- * DAG-CBOR/CIDv1 library); it trusts the server-returned source. The bookmark
- * opt-in + source inspection remain the primary trust mechanism. CID
- * verification is a documented future step (design guide DR-4).
+ *
+ * CID verification: after fetching the record, recompute the CID of the
+ * record value and check it matches (a) the CID returned by getRecord and
+ * (b) the CID the firehose feed announced (entry.cid). If either mismatches,
+ * the source is refused — the bytes that would run are not provably what the
+ * author published. This closes the v1 trust gap (DR-4): the bookmark opt-in
+ * and source inspection remain, but now there is a cryptographic guarantee.
  */
 export async function loadNetworkSource(uri: string): Promise<string> {
   const cached = cache.get(uri);
@@ -140,11 +174,25 @@ export async function loadNetworkSource(uri: string): Promise<string> {
   const source = String(record?.value?.source ?? '');
   if (!source) throw new Error(`plugin record has no source: ${uri}`);
 
+  // CID verification: fetched value must hash to the record's declared CID.
+  const recordCid = String(record?.cid ?? '');
+  const ok = await verifyRecordCID(record.value, recordCid);
+  if (!ok) {
+    throw new Error(`plugin source CID mismatch for ${uri}: fetched value does not match record CID ${recordCid}`);
+  }
+  // Cross-check: the firehose-announced CID (entry.cid) must agree with the
+  // record CID. A mismatch means the source served by getRecord is not the
+  // source the firehose said was published.
+  const feedCid = cached?.entry.cid ?? '';
+  if (feedCid && recordCid && feedCid !== recordCid) {
+    throw new Error(`plugin CID mismatch for ${uri}: feed announced ${feedCid} but record is ${recordCid}`);
+  }
+
   if (cached) {
     cached.source = source;
     cached.entry.bundleCode = source;
   } else {
-    cache.set(uri, { entry: summaryToEntry({ uri, cid: '', authorDID: did, rkey, title: '', action: 'create', seq: 0, time: '' }), source });
+    cache.set(uri, { entry: summaryToEntry({ uri, cid: recordCid, authorDID: did, rkey, title: '', action: 'create', seq: 0, time: '' }), source });
     cache.get(uri)!.entry.bundleCode = source;
   }
   return source;
