@@ -21,8 +21,9 @@ defineRuntimeBundle(({ ui }) => ({
         ]);
       },
       handlers: {
-        bump({ dispatchPluginAction }) {
-          dispatchPluginAction('state.merge', { count: 1 });
+        bump({ dispatchPluginAction, state }) {
+          const c = (state.plugin && state.plugin.count) || 0;
+          dispatchPluginAction('state.merge', { count: c + 1 });
         },
       },
     },
