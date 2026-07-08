@@ -117,3 +117,49 @@ func (c *Client) Like(ctx context.Context, uri, cid string) (string, error) {
 func ResolveDirectory() identity.Directory {
 	return identity.DefaultDirectory()
 }
+
+// CreatePostWithClient creates an app.bsky.feed.post record using an arbitrary
+// authenticated client (e.g. an OAuth DPoP-bound *atclient.APIClient) and the
+// account's DID. This is the client-agnostic form of Client.CreatePost.
+func CreatePostWithClient(ctx context.Context, c lexutil.LexClient, did, text string) (uri, cid string, err error) {
+	post := &appbsky.FeedPost{
+		LexiconTypeID: "app.bsky.feed.post",
+		Text:          text,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	input := &comatproto.RepoCreateRecord_Input{
+		Collection: "app.bsky.feed.post",
+		Repo:       did,
+		Record:     &lexutil.LexiconTypeDecoder{Val: post},
+	}
+	out, err := comatproto.RepoCreateRecord(ctx, c, input)
+	if err != nil {
+		return "", "", fmt.Errorf("createRecord failed: %w", err)
+	}
+	return out.Uri, out.Cid, nil
+}
+
+// LikeWithClient creates an app.bsky.feed.like record using an arbitrary
+// authenticated client and the account's DID. This is the client-agnostic
+// form of Client.Like.
+func LikeWithClient(ctx context.Context, c lexutil.LexClient, did, postURI, postCID string) (string, error) {
+	like := &appbsky.FeedLike{
+		LexiconTypeID: "app.bsky.feed.like",
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
+		Subject: &comatproto.RepoStrongRef{
+			LexiconTypeID: "com.atproto.repo.strongRef",
+			Uri:           postURI,
+			Cid:           postCID,
+		},
+	}
+	input := &comatproto.RepoCreateRecord_Input{
+		Collection: "app.bsky.feed.like",
+		Repo:       did,
+		Record:     &lexutil.LexiconTypeDecoder{Val: like},
+	}
+	out, err := comatproto.RepoCreateRecord(ctx, c, input)
+	if err != nil {
+		return "", fmt.Errorf("createRecord (like) failed: %w", err)
+	}
+	return out.Uri, nil
+}

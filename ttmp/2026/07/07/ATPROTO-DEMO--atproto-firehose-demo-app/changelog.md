@@ -49,3 +49,12 @@ Researched OAuth DPoP as replacement for app-password auth; saved indigo oauth-w
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/ttmp/2026/07/07/ATPROTO-DEMO--atproto-firehose-demo-app/scripts/03-oauth-dpop-integration-sketch.go — Sketch for DPoP login flow
 
+
+## 2026-07-07
+
+Implemented OAuth DPoP login (pkg/oauth) replacing app-password; made handle optional; fixed deletes piling at top of feed
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/oauth/factory.go — DPoP-bound OAuth flow
+

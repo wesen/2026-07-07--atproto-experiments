@@ -2,10 +2,8 @@ import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { api } from './api'
 import {
-  loginError,
-  loginStart,
-  loginSuccess,
-  logout,
+  loginRedirect,
+  logoutDone,
   postError as postErrorAction,
   postReset,
   postStart,
@@ -13,63 +11,55 @@ import {
   type RootState,
 } from './store'
 
+// Starts the OAuth DPoP login flow. This is a full-page navigation (not a
+// fetch) because the OAuth flow redirects away to bsky.app and back.
+function startLogin(handle: string) {
+  const params = new URLSearchParams({ handle })
+  window.location.href = `/oauth/login?${params.toString()}`
+}
+
 export function AccountPanel() {
   const dispatch = useDispatch()
-  const session = useSelector((s: RootState) => s.session.session)
+  const did = useSelector((s: RootState) => s.session.did)
   const status = useSelector((s: RootState) => s.session.status)
   const error = useSelector((s: RootState) => s.session.error)
+  const [handle, setHandle] = useState('')
 
-  const [identifier, setIdentifier] = useState('')
-  const [password, setPassword] = useState('')
-
-  if (session) {
-    return <PostBox session={session} onLogout={() => dispatch(logout())} />
+  if (did) {
+    return <PostBox did={did} onLogout={async () => {
+      await api.logout()
+      dispatch(logoutDone())
+    }} />
   }
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    dispatch(loginStart())
-    try {
-      const s = await api.login(identifier, password)
-      dispatch(loginSuccess(s))
-    } catch (err) {
-      dispatch(loginError(String(err)))
-    }
+    if (!handle.trim()) return
+    dispatch(loginRedirect())
+    startLogin(handle.trim())
   }
 
   return (
     <form className="account" onSubmit={submit}>
-      <h2>Sign in to your bsky account</h2>
+      <h2>Sign in with Bluesky</h2>
       <p className="hint">
-        Use an <strong>app password</strong> from bsky.app/settings, not your
-        main password.
+        You'll be redirected to bsky.app to approve access. We never see your
+        password — login uses OAuth with DPoP-bound tokens.
       </p>
       <input
-        placeholder="handle or DID (e.g. alice.bsky.social)"
-        value={identifier}
-        onChange={(e) => setIdentifier(e.target.value)}
+        placeholder="handle (e.g. alice.bsky.social)"
+        value={handle}
+        onChange={(e) => setHandle(e.target.value)}
       />
-      <input
-        type="password"
-        placeholder="app password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <button disabled={status === 'loading'}>
-        {status === 'loading' ? 'Signing in…' : 'Sign in'}
+      <button disabled={status === 'loading' || !handle.trim()}>
+        {status === 'loading' ? 'Redirecting…' : 'Sign in with Bluesky'}
       </button>
       {error && <p className="error">{error}</p>}
     </form>
   )
 }
 
-function PostBox({
-  session,
-  onLogout,
-}: {
-  session: { did: string; handle: string }
-  onLogout: () => void
-}) {
+function PostBox({ did, onLogout }: { did: string; onLogout: () => void }) {
   const dispatch = useDispatch()
   const postStatus = useSelector((s: RootState) => s.session.postStatus)
   const postErr = useSelector((s: RootState) => s.session.postError)
@@ -92,10 +82,8 @@ function PostBox({
   return (
     <div className="account">
       <div className="who">
-        Signed in as <strong>@{session.handle}</strong>
-        <button className="link" onClick={onLogout}>
-          sign out
-        </button>
+        Signed in as <strong>{shortDid(did)}</strong>
+        <button className="link" onClick={onLogout}>sign out</button>
       </div>
       <form onSubmit={submit}>
         <textarea
@@ -112,4 +100,9 @@ function PostBox({
       {postErr && <p className="error">{postErr}</p>}
     </div>
   )
+}
+
+function shortDid(did: string): string {
+  const parts = did.split(':')
+  return parts.length >= 3 ? parts.slice(2).join(':').slice(0, 10) : did
 }

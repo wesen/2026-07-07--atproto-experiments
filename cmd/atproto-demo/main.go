@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/wesen/atproto-experiments/pkg/firehose"
+	"github.com/wesen/atproto-experiments/pkg/oauth"
 	"github.com/wesen/atproto-experiments/pkg/server"
 
 	embed "github.com/wesen/atproto-experiments"
@@ -52,13 +53,15 @@ var firehoseCmd = &cobra.Command{
 }
 
 var (
-	flagRelay string
-	flagAddr  string
+	flagRelay        string
+	flagAddr         string
+	flagSessionSecret string
 )
 
 func init() {
 	serveCmd.Flags().StringVar(&flagRelay, "relay", "https://relay1.us-east.bsky.network", "relay firehose URL")
 	serveCmd.Flags().StringVar(&flagAddr, "addr", ":8080", "HTTP listen address")
+	serveCmd.Flags().StringVar(&flagSessionSecret, "session-secret", "dev-insecure-secret-change-me", "secret used to sign OAuth session cookies (use openssl rand -hex 16)")
 	firehoseCmd.Flags().StringVar(&flagRelay, "relay", "https://relay1.us-east.bsky.network", "relay firehose URL")
 
 	rootCmd.AddCommand(serveCmd)
@@ -78,7 +81,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	logger := slog.Default().With("system", "atproto-demo")
 	consumer := firehose.NewConsumer(flagRelay, logger)
-	srv := server.NewServer(consumer, logger)
+
+	// OAuth callback URL must match the listen address the PDS redirects
+	// back to. For localhost dev, 127.0.0.1:PORT is used (the atproto
+	// localhost client_id special-case means no public hostname is needed).
+	callbackURL := "http://127.0.0.1" + flagAddr + "/oauth/callback"
+	oauthFactory := oauth.NewFactory(callbackURL, flagSessionSecret, logger)
+	srv := server.NewServer(consumer, oauthFactory, logger)
 
 	// Start the firehose consumer in the background.
 	go func() {

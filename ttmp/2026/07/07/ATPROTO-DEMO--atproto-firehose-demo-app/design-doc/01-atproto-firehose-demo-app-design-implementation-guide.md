@@ -34,6 +34,8 @@ RelatedFiles:
       Note: HTTP server (net/http ServeMux + ring buffer + /api)
     - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/ws.go
       Note: WebSocket fan-out to browsers
+    - Path: repo://pkg/oauth/factory.go
+      Note: OAuth DPoP login replacing app-password (Decision D3 revisited)
 ExternalSources:
     - https://atproto.com/specs/sync
     - https://atproto.com/specs/event-stream
@@ -47,6 +49,7 @@ LastUpdated: 2026-07-07T00:00:00Z
 WhatFor: Onboarding a new intern to build and extend the ATProto firehose demo.
 WhenToUse: Read this before touching any file in pkg/ or frontend/src/.
 ---
+
 
 
 

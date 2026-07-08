@@ -12,4 +12,4 @@
 - [x] Write intern design & implementation guide <!-- t:qvxx -->
 - [x] Docmgr bookkeeping + doctor validation <!-- t:49ci -->
 - [x] Upload design doc + diary to reMarkable <!-- t:q99o -->
-- [ ] Replace app-password auth with OAuth DPoP (see scripts/03 sketch) <!-- t:of4q -->
+- [x] Replace app-password auth with OAuth DPoP (see scripts/03 sketch) <!-- t:of4q -->

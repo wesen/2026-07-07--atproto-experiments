@@ -18,6 +18,7 @@ export interface Post {
 export interface Status {
   lastSeq: number
   loggedIn: boolean
+  did: string
 }
 
 export interface Session {

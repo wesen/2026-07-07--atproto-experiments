@@ -23,13 +23,17 @@ RelatedFiles:
     - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/embed.go
       Note: go:embed of frontend/dist; built in Step 3
     - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/store.ts
-      Note: Built in Step 4
+      Note: |-
+        Built in Step 4
+        Fixed deletes piling at top (Step 8)
     - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/bsky/client.go
       Note: Account client; built in Step 3
     - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/firehose/consumer.go
       Note: Built in Step 3; verified in Step 5
     - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/server.go
       Note: HTTP server; built in Step 3
+    - Path: repo://pkg/oauth/factory.go
+      Note: OAuth DPoP factory (Step 8)
     - Path: repo://ttmp/2026/07/07/ATPROTO-DEMO--atproto-firehose-demo-app/scripts/03-oauth-dpop-integration-sketch.go
       Note: OAuth DPoP integration sketch (Phase 5 follow-up)
 ExternalSources:
@@ -41,6 +45,8 @@ LastUpdated: 2026-07-07T00:00:00Z
 WhatFor: Record how the demo was built, what failed, and how to continue.
 WhenToUse: Read before resuming work on ATPROTO-DEMO.
 ---
+
+
 
 
 
@@ -421,3 +427,77 @@ The ticket-research skill requires bookkeeping + validation + reMarkable deliver
 ### Technical details
 - reMarkable path: `/ai/2026/07/07/ATPROTO-DEMO/ATProto Firehose Demo - Design & Implementation Guide.pdf`.
 - Bundle = design doc (43 KB, 16 sections) + diary (20 KB, 7 steps).
+
+## Step 8: Replace app-password auth with OAuth DPoP; fix deletes piling at top
+
+The user asked to log in through Bluesky via OAuth DPoP instead of an app
+password, then asked whether the handle field is necessary. I implemented the
+full OAuth DPoP flow (the production auth path from the original Decision D3),
+made the handle optional, and separately fixed a feed bug where delete events
+piled up at the top.
+
+### Prompt Context
+
+**User prompt (verbatim):** "can we do oauth dpop to log in through bluesky and not use an app password?"
+
+**Assistant interpretation:** Implement ATProto OAuth (which mandates DPoP) to replace the app-password login, using the indigo `atproto/auth/oauth` SDK.
+
+**Inferred user intent:** A production-grade, password-free login: the user consents on bsky.app, the demo gets a DPoP-bound access token, no password ever touches the demo server.
+
+### What I did
+- Researched: read `sources/specs/oauth.md` (DPoP mandatory for all clients, server-issued nonces, ES256/P-256, PAR, PKCE, dynamic client metadata via `client_id` URL).
+- Saved indigo reference to ticket `scripts/`: `01-oauth-web-demo.go` (full reference web app), `02-oauth-sdk-*.go` (OAuth SDK source), `03-oauth-dpop-integration-sketch.go` (annotated sketch). All `//go:build ignore`.
+- Implemented `pkg/oauth/factory.go`: `Factory` wrapping `oauth.ClientApp` + `oauth.NewMemStore` + `gorilla/sessions` cookie store. Handles: `/oauth/client-metadata.json`, `/oauth/login`, `/oauth/callback`, `/oauth/logout`; `ResumeClient` returns a DPoP-bound `*atclient.APIClient` per request.
+- Refactored `pkg/bsky/client.go`: added client-agnostic `CreatePostWithClient`/`LikeWithClient` taking `lexutil.LexClient` + DID, reused by the OAuth path.
+- Refactored `pkg/server/server.go`: replaced the `bsky.Client` field with `*oauth.Factory`; `/api/post` and `/api/like` now resume the OAuth session and call the client-agnostic helpers; `/api/status` returns `did` + `loggedIn` from the OAuth cookie.
+- Updated `cmd/atproto-demo/main.go`: `--session-secret` flag; `oauth.NewFactory(callbackURL, secret, logger)` passed to `NewServer`.
+- Frontend: `api.ts` (login is now a redirect, not a fetch), `store.ts` (session comes from `/api/status` via `sessionFromStatus`), `AccountPanel.tsx` (handle form + "Sign in with Bluesky"), `App.tsx` (`useSessionStatus` hook).
+- Made the handle OPTIONAL: empty handle → use `https://bsky.social` entryway as the auth server directly (user authenticates on bsky.app).
+- Fixed a feed bug: `postReceived` now **removes** the matching URI on `delete` instead of `unshift`-ing a placeholder; `postsReceived` drops deletes from the snapshot. Deletes no longer pile at the top.
+
+### Why
+DPoP-bound OAuth is the production auth path; app passwords are only for bots/CLIs. The handle is not required because ATProto OAuth supports a login-hint-less flow — the user picks their account on bsky.app. The deletes bug was a real correctness issue: the firehose interleaves creates and deletes, and naive prepend made deletes dominate the top of the feed.
+
+### What worked
+- `go build ./...` and `pnpm build` both clean.
+- `/oauth/client-metadata.json` returns valid DPoP client metadata (`dpop_bound_access_tokens`, scopes, redirect URI).
+- `/oauth/login?handle=atproto.com` returns HTTP 302 → `https://bsky.social/oauth/authorize?...&request_uri=urn:ietf:params:oauth:request_uri:req-...` — the full PAR+PKCE+DPoP flow completed (the SDK's `use_dpop_nonce` retry succeeded).
+- `/api/status` returns `loggedIn:false, did:""` when unauthenticated.
+
+### What didn't work
+- `/oauth/login?handle=test.bsky.social` (a non-existent handle) → HTTP 400 `failed to resolve username: DID method not supported`. Expected: you can't OAuth into an account that doesn't resolve. Real handles work.
+- First PAR attempt logs `use_dpop_nonce` (HTTP 400) — this is the **expected** DPoP nonce retry signal; the SDK retries and succeeds. Looks alarming in logs but is correct.
+
+### What I learned
+- ATProto OAuth = OAuth 2.1 + PKCE + DPoP (mandatory) + PAR + dynamic client metadata (`client_id` is a URL). The indigo SDK hides all of it behind `StartAuthFlow`/`ProcessCallback`/`ResumeSession`.
+- `StartAuthFlow(identifier)`: if identifier starts with `https://`, it's used as the auth server URL directly (no handle resolution, no login hint). Otherwise it resolves handle→DID→PDS. So a no-handle flow = pass `https://bsky.social`.
+- DPoP concretely: per-session P-256 key; every request signs a JWT over method+URL+nonce in the `DPoP` header; access tokens are bound to that key. Server nonces rotate ≤5 min; SDK retries on `use_dpop_nonce`.
+- `*atclient.APIClient` implements `lexutil.LexClient`, so the same `createRecord` calls work for both app-password and OAuth clients — only the auth method differs.
+
+### What was tricky to build
+- The `//go:build ignore` tags on `scripts/` reference files (without them Go tries to compile `package main`/`package oauth` files that conflict).
+- The server.go edit introduced a double `}}` (brace mismatch) that broke the build; caught by `go build` and fixed.
+- The frontend `api.ts` login changed from a `fetch` POST to a full-page `window.location` redirect (OAuth requires a browser navigation, not an XHR), and the session state now comes from `/api/status` after the callback redirect lands on `/`.
+- The deletes-pile-up bug: root cause was `postReceived` unconditionally `unshift`-ing every event including deletes; the fix removes the matching URI on delete.
+
+### What warrants a second pair of eyes
+- `pkg/oauth/factory.go` `ResumeClient`: returns a fresh `*APIClient` per request via `ResumeSession`. Confirm token refresh + DPoP nonce rotation happen transparently inside the SDK on expiry (they do, via `DoWithAuth`), but verify under a long-lived session.
+- The no-handle `https://bsky.social` path only covers bsky.social-hosted accounts. Accounts on other PDSs still need a handle. Confirm this is acceptable for the demo's audience.
+- `pkg/server/server.go` `authedClient`: `api.AccountDID.String()` — `AccountDID` is `*syntax.DID`; confirm non-nil after `ResumeSession` (it is, but a nil deref would panic).
+
+### What should be done in the future
+- Add a `/oauth/refresh` endpoint (the SDK has `ClientSession.RefreshTokens`) for explicit token refresh before posting.
+- Persist the OAuth session store (`oauth.NewMemStore` is in-memory; a restart logs everyone out). Use a persistent `ClientAuthStore`.
+- Run as a confidential client (P-256 client attestation key) for longer token lifetimes.
+- Verify the full round-trip (consent → callback → post appears in firehose) with a real human login, which can't be automated.
+
+### Code review instructions
+- `go build ./...` and `cd frontend && pnpm build` must pass.
+- `/oauth/client-metadata.json` must return JSON with `dpop_bound_access_tokens: true`.
+- `/oauth/login?handle=atproto.com` must return 302 to `https://bsky.social/oauth/authorize?...`.
+- Browser: load SPA, type nothing, click "Sign in with Bluesky" → navigates to bsky.app.
+
+### Technical details
+- New deps: `github.com/gorilla/sessions`, `github.com/gorilla/securecookie`.
+- Scopes: `atproto`, `repo:app.bsky.feed.post?action=create`, `repo:app.bsky.feed.like?action=create` (fine-grained).
+- client_id (localhost dev): `http://localhost?redirect_uri=...&scope=...` (PDS special-cases this).

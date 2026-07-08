@@ -1,11 +1,25 @@
-import { Provider } from 'react-redux'
-import { store } from './store'
+import { useEffect } from 'react'
+import { Provider, useDispatch } from 'react-redux'
+import { store, sessionFromStatus, type AppDispatch } from './store'
 import { useFirehose } from './useFirehose'
 import { Feed } from './Feed'
 import { AccountPanel } from './AccountPanel'
 
+// useSessionStatus fetches /api/status on mount and reflects the OAuth
+// session state (set after the /oauth/callback redirect lands on /).
+function useSessionStatus() {
+  const dispatch = useDispatch<AppDispatch>()
+  useEffect(() => {
+    fetch('/api/status')
+      .then((r) => r.json())
+      .then((data) => dispatch(sessionFromStatus(data)))
+      .catch(() => {})
+  }, [dispatch])
+}
+
 function App() {
   useFirehose()
+  useSessionStatus()
   return (
     <div className="app">
       <header>

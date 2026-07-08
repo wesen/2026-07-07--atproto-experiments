@@ -29,29 +29,34 @@ import (
 
 	"github.com/wesen/atproto-experiments/pkg/bsky"
 	"github.com/wesen/atproto-experiments/pkg/firehose"
+	"github.com/wesen/atproto-experiments/pkg/oauth"
+
+	lexutil "github.com/bluesky-social/indigo/lex/util"
 )
 
 // Server holds the HTTP server and its dependencies.
 type Server struct {
 	consumer *firehose.Consumer
+	oauth    *oauth.Factory
 	logger   *slog.Logger
 
-	mu       sync.Mutex
-	ring     []firehose.Post // bounded ring buffer of recent posts
-	ringCap  int
-	client   *bsky.Client // nil until login
+	mu      sync.Mutex
+	ring    []firehose.Post // bounded ring buffer of recent posts
+	ringCap int
 
-	wsSubs   sync.Map // map[int]chan firehose.Post
-	nextSub  atomic.Int64
+	wsSubs  sync.Map // map[int]chan firehose.Post
+	nextSub atomic.Int64
 }
 
-// NewServer creates a Server backed by the given firehose consumer.
-func NewServer(consumer *firehose.Consumer, logger *slog.Logger) *Server {
+// NewServer creates a Server backed by the given firehose consumer and OAuth
+// factory.
+func NewServer(consumer *firehose.Consumer, oauthFactory *oauth.Factory, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default().With("system", "server")
 	}
 	s := &Server{
 		consumer: consumer,
+		oauth:    oauthFactory,
 		logger:   logger,
 		ringCap:  200,
 	}
@@ -97,7 +102,10 @@ func (s *Server) Handler(spaFS fs.FS) http.Handler {
 
 	mux.HandleFunc("GET /api/posts", s.handlePosts)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
-	mux.HandleFunc("POST /api/login", s.handleLogin)
+	mux.HandleFunc("GET /oauth/client-metadata.json", s.oauth.HandleClientMetadata)
+	mux.HandleFunc("GET /oauth/login", s.oauth.HandleLogin)
+	mux.HandleFunc("GET /oauth/callback", s.oauth.HandleCallback)
+	mux.HandleFunc("POST /oauth/logout", s.oauth.HandleLogout)
 	mux.HandleFunc("POST /api/post", s.handlePost)
 	mux.HandleFunc("POST /api/like", s.handleLike)
 	mux.HandleFunc("GET /ws", s.handleWS)
@@ -129,41 +137,10 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	loggedIn := s.client != nil
-	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"lastSeq": s.consumer.LastSeq(),
-		"loggedIn": loggedIn,
-	})
-}
-
-type loginRequest struct {
-	Identifier string `json:"identifier"`
-	Password   string `json:"password"`
-	Host       string `json:"host"`
-}
-
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	if req.Host == "" {
-		req.Host = "https://bsky.social"
-	}
-	client, err := bsky.Login(r.Context(), req.Host, req.Identifier, req.Password)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
-		return
-	}
-	s.mu.Lock()
-	s.client = client
-	s.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]string{
-		"did":    client.DID(),
-		"handle": client.Handle(),
+		"lastSeq":   s.consumer.LastSeq(),
+		"loggedIn": s.oauth.IsAuthenticated(r),
+		"did":      s.oauth.AccountDID(r),
 	})
 }
 
@@ -172,8 +149,8 @@ type postRequest struct {
 }
 
 func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
-	client := s.clientOr401(w)
-	if client == nil {
+	api, did, ok := s.authedClient(w, r)
+	if !ok {
 		return
 	}
 	var req postRequest
@@ -181,7 +158,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	uri, cid, err := client.CreatePost(r.Context(), req.Text)
+	uri, cid, err := bsky.CreatePostWithClient(r.Context(), api, did, req.Text)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -195,8 +172,8 @@ type likeRequest struct {
 }
 
 func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
-	client := s.clientOr401(w)
-	if client == nil {
+	api, did, ok := s.authedClient(w, r)
+	if !ok {
 		return
 	}
 	var req likeRequest
@@ -204,7 +181,7 @@ func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	uri, err := client.Like(r.Context(), req.URI, req.CID)
+	uri, err := bsky.LikeWithClient(r.Context(), api, did, req.URI, req.CID)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -212,14 +189,15 @@ func (s *Server) handleLike(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"uri": uri})
 }
 
-func (s *Server) clientOr401(w http.ResponseWriter) *bsky.Client {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.client == nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not logged in"})
-		return nil
+// authedClient resumes the OAuth session and returns the DPoP-bound API client
+// and the account DID. Writes a 401 and returns ok=false if not authenticated.
+func (s *Server) authedClient(w http.ResponseWriter, r *http.Request) (lexutil.LexClient, string, bool) {
+	api, err := s.oauth.ResumeClient(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return nil, "", false
 	}
-	return s.client
+	return api, api.AccountDID.String(), true
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
