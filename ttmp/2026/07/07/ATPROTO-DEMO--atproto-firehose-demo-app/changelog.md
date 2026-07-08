@@ -58,3 +58,12 @@ Implemented OAuth DPoP login (pkg/oauth) replacing app-password; made handle opt
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/oauth/factory.go — DPoP-bound OAuth flow
 
+
+## 2026-07-07
+
+Removed handle field so identifier is editable on bsky.app; verified OAuth redirect in browser; diagnosed access_denied:expired as in-memory-store restart limitation
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/AccountPanel.tsx — Single Sign in with Bluesky button, no handle field
+

@@ -501,3 +501,66 @@ DPoP-bound OAuth is the production auth path; app passwords are only for bots/CL
 - New deps: `github.com/gorilla/sessions`, `github.com/gorilla/securecookie`.
 - Scopes: `atproto`, `repo:app.bsky.feed.post?action=create`, `repo:app.bsky.feed.like?action=create` (fine-grained).
 - client_id (localhost dev): `http://localhost?redirect_uri=...&scope=...` (PDS special-cases this).
+
+## Step 9: Editable identifier on bsky.app, browser verification, expired-request diagnosis
+
+After the OAuth flow redirected to bsky.app, the user reported the identifier
+field was locked (only the password was editable). I removed the handle field
+entirely, verified the full flow in the browser, and diagnosed an
+"access_denied: This request has expired" callback error as an in-memory-store
+limitation rather than a flow bug.
+
+### Prompt Context
+
+**User prompt (verbatim):** "I can't edit my handle on the signin page... (I can enter on the password)"
+
+**Assistant interpretation:** The login_hint we pass locks the identifier on bsky.app; remove the handle field so the identifier is editable there.
+
+**Inferred user intent:** The "Sign in with Bluesky" UX should let the user type/select their account on bsky.app, not lock it to a pre-filled value.
+
+### What I did
+- Root-caused the locked field: passing `handle` as a `loginHint` in the PAR request causes bsky.app to pre-fill AND disable the identifier input. The SDK's `StartAuthFlow` only omits the hint when the identifier starts with `https://`.
+- Removed the handle `<input>` from `AccountPanel.tsx`: the form is now a single "Sign in with Bluesky" button that navigates to `/oauth/login` (no query param). The factory's no-handle path already uses `https://bsky.social` as the auth server, so no login hint is sent.
+- Rebuilt the frontend + binary; restarted the `systemd-run --user` unit.
+- Verified with Playwright: the account panel has no handle input (`hasHandleInput: 0`), the button is enabled, clicking it navigates to `https://bsky.social/oauth/authorize?...` (no `login_hint` in the URL), landing on the "Authenticate" account-selection page where the user picks "Sign in" and types their handle freely.
+- Diagnosed the user's `access_denied: This request has expired` callback error: the `oauth.NewMemStore()` is an in-process map holding the `state`→PKCE-verifier/DPoP-key mapping. The mapping expires server-side after a short window, and — critically — is wiped when the Go process restarts. I had been rebuilding/restarting the binary between the user's login click and the callback, so the `state` in the callback URL no longer matched anything in the store.
+
+### Why
+A locked identifier is bad UX and defeats the point of password-free OAuth (the user should authenticate on bsky.app, not be committed to a handle they typed on our form). The expired-request diagnosis matters because it explains a class of "it works then doesn't" failures tied to process restarts and slow human consent.
+
+### What worked
+- Removing the handle field: the no-hint flow lands on bsky.app's "Authenticate" page (title "Authenticate"), where the identifier is editable. `go build` + `pnpm build` clean.
+- Playwright confirmed: `hasHandleInput: 0`, button enabled, click → `bsky.social/oauth/authorize?...` (no `login_hint`).
+- The earlier Step 8 curl checks still hold: `/oauth/client-metadata.json` returns `dpop_bound_access_tokens: true`; `/oauth/login` (no handle) → 302 to bsky.social.
+
+### What didn't work
+- The user's first OAuth round-trip failed with `access_denied: This request has expired` at `/oauth/callback`. Root cause: in-memory store wiped by a restart mid-flow (I rebuilt the binary between login and callback). Not a flow bug.
+- `nohup`/`setsid`/`( & )` background servers did NOT survive across `bash` tool calls in this environment (process group killed). Had to use `systemd-run --user --unit=...` to keep the server alive for Playwright. The first `systemd-run` attempt failed because of a `--working-directory` flag interaction; the bare form worked.
+
+### What I learned
+- `loginHint` locks the identifier on bsky.app. For a "Sign in with X" button, omit the hint entirely; the user authenticates on the provider.
+- `oauth.NewMemStore()` is explicitly documented as "not appropriate even [for] casual real-world use: all users will be logged-out every time the process is restarted." The `ClientAuthStore` interface (6 methods: Get/Save/DeleteSession, Get/Save/DeleteAuthRequestInfo) is small enough to back with a file/SQLite store for persistence.
+- `systemd-run --user --unit=<name> <cmd>` is the reliable way to run a detached server across tool-call boundaries here; `journalctl --user -u <name>` reads its logs.
+
+### What was tricky to build
+- React controlled-input state vs Playwright `fill`: `page.evaluate` setting `input.value` directly does not update React's state, leaving the submit button disabled. `getByPlaceholder(...).fill(...)` (via `run_code_unsafe`) fires the real onChange and updates state. A stale `loginRedirect` status from an earlier failed attempt also kept the button disabled until a page reload reset it.
+- Keeping the server alive for the browser test: three backgrounding strategies failed before `systemd-run` worked.
+
+### What warrants a second pair of eyes
+- The no-handle `https://bsky.social` path only covers bsky.social-entryway accounts. Confirm the demo's audience is on bsky.social (almost all are).
+- The `access_denied: expired` error will recur on any restart during a flow. For a smooth demo, either avoid restarting mid-flow or implement a persistent `ClientAuthStore`.
+
+### What should be done in the future
+- Implement a file- or SQLite-backed `ClientAuthStore` so in-flight OAuth flows survive restarts and the `state`/PKCE mapping persists across a slow human consent.
+- Add a `/oauth/refresh` endpoint using `ClientSession.RefreshTokens`.
+- Run as a confidential client (P-256 client attestation) for longer token lifetimes.
+- Complete the full round-trip with a real human login (consent → callback → post appears in the firehose) — cannot be automated.
+
+### Code review instructions
+- `cd frontend && pnpm build` and `go build ./...` must pass.
+- Browser: load SPA → no handle input, just "Sign in with Bluesky" → click → navigates to `bsky.social/oauth/authorize` with no `login_hint` in the URL.
+
+### Technical details
+- Commit for this step: `c93abb1`.
+- `ClientAuthStore` interface (6 methods) at `scripts/02-oauth-sdk-store.go`; `MemStore` at `scripts/02-oauth-sdk-memstore.go`.
+- Server run: `systemd-run --user --unit=atproto-demo2 /tmp/atproto-demo serve --addr :18105 --relay https://relay1.us-east.bsky.network`.
