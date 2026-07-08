@@ -23,6 +23,8 @@ topics:
       description: Redux state management
     - slug: bsky
       description: Bluesky app.bsky lexicons
+    - slug: repository
+      description: ATProto repository data model and reads
 docTypes:
     - slug: design-doc
       description: Structured rationale and architecture notes

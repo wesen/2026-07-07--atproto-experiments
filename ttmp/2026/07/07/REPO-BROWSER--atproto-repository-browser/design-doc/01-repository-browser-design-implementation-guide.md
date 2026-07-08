@@ -14,27 +14,29 @@ DocType: design-doc
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/repobrowser/browser.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/server.go
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/RepoBrowser.tsx
-    - /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/App.tsx
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/App.tsx
+      Note: Tab switch Firehose/Repository
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/RepoBrowser.tsx
+      Note: 3-column repo browser UI
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/repobrowser/browser.go
+      Note: Browser over com.atproto.repo.* XRPCs
+    - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/pkg/server/server.go
+      Note: /api/repo/* routes + repoAuthedClient
 ExternalSources:
     - https://atproto.com/specs/repository
     - https://atproto.com/specs/sync
     - https://atproto.com/specs/at-uri-scheme
     - https://github.com/bluesky-social/indigo
-Summary: >
-  A complete, intern-ready design and implementation guide for a repository
-  browser page that walks any public ATProto repository by handle or DID:
-  describe the repo, list collections, paginate records within a collection,
-  and fetch a single record's decoded value. Covers the repository data model,
-  the XRPC read APIs, the Go browser package, the HTTP server routes, the
-  React three-column UI, and a phased plan with pseudocode, diagrams, and
-  API references.
-LastUpdated: 2026-07-07
-WhatFor: "Onboarding a new intern to build and extend the repository browser."
-WhenToUse: "Read this before touching pkg/repobrowser/ or frontend/src/RepoBrowser.tsx."
+Summary: |
+    A complete, intern-ready design and implementation guide for a repository browser page that walks any public ATProto repository by handle or DID: describe the repo, list collections, paginate records within a collection, and fetch a single record's decoded value. Covers the repository data model, the XRPC read APIs, the Go browser package, the HTTP server routes, the React three-column UI, and a phased plan with pseudocode, diagrams, and API references.
+LastUpdated: 2026-07-07T00:00:00Z
+WhatFor: Onboarding a new intern to build and extend the repository browser.
+WhenToUse: Read this before touching pkg/repobrowser/ or frontend/src/RepoBrowser.tsx.
 ---
+
+
+
+
 
 # Repository Browser — Design & Implementation Guide
 
