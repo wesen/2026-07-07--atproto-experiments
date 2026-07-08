@@ -31,6 +31,12 @@ RelatedFiles:
       Note: loadRuntimeBundle load seam (code:string)
     - Path: /home/manuel/code/wesen/2026-07-07--browser-js-inject-vm/src/runtime/plugin-runtime/stack-bootstrap.vm.js
       Note: QuickJS kernel (unchanged)
+    - Path: abs:///home/manuel/code/wesen/2026-07-07--browser-js-inject-vm/src/plugins/bookmarks.ts
+      Note: localStorage opt-in gate
+    - Path: abs:///home/manuel/code/wesen/2026-07-07--browser-js-inject-vm/src/plugins/networkLoader.ts
+      Note: fetchFeed/loadNetworkSource/clampCapabilities/ensureSource
+    - Path: abs:///home/manuel/code/wesen/2026-07-07--browser-js-inject-vm/src/plugins/useNetworkFeed.ts
+      Note: poller + bookmark hooks
 ExternalSources:
     - https://atproto.com/specs/repository
     - https://atproto.com/specs/at-uri-scheme
@@ -40,6 +46,9 @@ LastUpdated: 2026-07-07T00:00:00Z
 WhatFor: Onboarding an intern to build the runtime/execution side of social JS plugin sharing.
 WhenToUse: Read this first when joining the PLUGIN-RUNTIME ticket.
 ---
+
+
+
 
 
 

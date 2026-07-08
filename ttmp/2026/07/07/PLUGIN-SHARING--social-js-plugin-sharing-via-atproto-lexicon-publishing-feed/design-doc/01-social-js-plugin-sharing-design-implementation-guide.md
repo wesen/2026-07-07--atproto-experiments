@@ -29,6 +29,12 @@ RelatedFiles:
       Note: NSID syntax for dev.atproto-demo.plugin
     - Path: /home/manuel/code/wesen/2026-07-07--atproto-experiments/sources/specs/repository.md
       Note: Repository record model
+    - Path: repo://frontend/src/PublishPlugin.tsx
+      Note: Compose/publish UI
+    - Path: repo://pkg/plugins/lexicon.go
+      Note: NSID + PluginSummary/Record types
+    - Path: repo://pkg/plugins/publisher.go
+      Note: Publish via raw LexDo + DecodeSummary
 ExternalSources:
     - https://atproto.com/specs/lexicon
     - https://atproto.com/specs/repository
@@ -39,6 +45,9 @@ LastUpdated: 2026-07-07T00:00:00Z
 WhatFor: Onboarding an intern to build the publishing and feed side of social JS plugin sharing.
 WhenToUse: Read this first when joining the PLUGIN-SHARING ticket.
 ---
+
+
+
 
 
 
