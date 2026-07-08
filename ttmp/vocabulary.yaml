@@ -25,6 +25,18 @@ topics:
       description: Bluesky app.bsky lexicons
     - slug: repository
       description: ATProto repository data model and reads
+    - slug: lexicon
+      description: ATProto Lexicon schema definitions and NSIDs
+    - slug: plugins
+      description: JS plugin bundles run in a sandboxed VM
+    - slug: sandbox
+      description: QuickJS isolation boundary for untrusted plugin code
+    - slug: vm
+      description: QuickJS in-browser virtual machine runtime
+    - slug: browser
+      description: Browser-side React/Vite frontend
+    - slug: oauth
+      description: ATProto OAuth DPoP authentication
 docTypes:
     - slug: design-doc
       description: Structured rationale and architecture notes
