@@ -328,3 +328,56 @@ The firehose sidebar previously only offered built-in feed-middleware plugins. L
 
 ### Technical details
 - Commit `9148bd1` (network feed-middleware in firehose) + `c15b25f` (gitignore artifact).
+
+## Step 6: CID verification for fetched plugin source (DR-4)
+
+Added cryptographic integrity verification: the browser now proves the fetched
+plugin source matches the record's ATProto content-addressed CID before
+loading, closing the v1 trust gap.
+
+### Prompt Context
+**User prompt (verbatim):** "add CID verification"
+
+**Assistant interpretation:** Implement the deferred DR-4: verify fetched plugin source against the record's CID in the browser.
+
+**Inferred user intent:** Upgrade the trust model from consent-and-inspection to self-certifying (the bytes that run are provably what the author published).
+
+### What I did
+- Added `multiformats` + `@ipld/dag-cbor` deps to the atproto frontend.
+- `networkLoader.ts`: `computeRecordCID(value)` = `CID.createV1(dagcbor.code (0x71), sha256.digest(dagcbor.encode(value)))`; `verifyRecordCID(value, declaredCID)`.
+- Wired into `loadNetworkSource`: after fetching the record, (a) the fetched `value` must hash to the record's `getRecord` CID, and (b) that CID must agree with the firehose-announced CID (`entry.cid`). Either mismatch throws and the plugin is refused.
+
+### Why
+ATProto records are content-addressed; the CID is the integrity guarantee. Using it makes "the source that runs" equal to "the source the author published," independent of whether the atproto-experiments server or a MITM returns different bytes.
+
+### What worked
+- Empirical proof BEFORE wiring: a node script recomputed the CID of a real fetched record and it EXACTLY matched the PDS-declared CID (`bafyreias5j2...` == `bafyreias5j2...`). The DAG-CBOR round-trip (JSON -> canonical DAG-CBOR -> sha256 -> CIDv1) is byte-identical to the PDS's stored block for inline-source records.
+- Node logic test: self-match true, tampered value -> different CID (mismatch), correct `bafyrei...` prefix.
+- Playwright: launching a network plugin still succeeds (CID passed), renders "Hello from the firehose!", 0 console errors.
+
+### What didn't work
+- First attempt added a `networkLoader.test.ts` with vitest globals, but the atproto frontend has no vitest -> `tsc -b` failed (`Cannot find name 'expect'`). Removed the test file (the CID logic is proven by the node script + the in-browser happy path; the .test.ts properly belongs in browser-js-inject-vm which has vitest, but that repo lacks the CID functions — a gap accepted for now).
+
+### What I learned
+- `@ipld/dag-cbor`'s `encode()` produces canonical DAG-CBOR (length-first key ordering) regardless of input order, matching the PDS's canonical storage. So JSON key order does not matter.
+- The CID prefix `bafyrei...` identifies dag-cbor (codec 0x71) + sha2-256, which is how to sanity-check the computation at a glance.
+- The round-trip is clean ONLY for records without nested CID links or bytes. A `sourceBlob` field (`{ $link: "bafy..." }`) would encode as a plain map, NOT a CBOR-tagged CID, and would mismatch the original. v1 uses inline source, so this does not arise; documented as a limitation.
+
+### What was tricky to build
+- The risk was a false rejection from an encoding mismatch. De-risked by empirically testing the CID computation against a REAL PDS record BEFORE wiring it in — confirming the match before committing to the implementation.
+- Deciding which CID to verify against: the `getRecord` response CID AND the firehose-announced `entry.cid` (independent paths). Verifying against only one would miss a tampering case where the server changed both source and CID consistently; the cross-check catches that.
+
+### What warrants a second pair of eyes
+- The blob limitation: if a future record uses `sourceBlob`, `verifyRecordCID` would falsely reject. Fix = walk the value and convert `{$link}` to `CID.parse(...)` before encoding (dag-cbor then emits the CBOR tag). Not needed in v1.
+- The `verifyRecordCID(value, '')` no-op (returns true when no CID declared). Confirm this is acceptable vs. refusing when no CID is present.
+
+### What should be done in the future
+- Handle `sourceBlob` records (convert `$link` -> CID before encoding).
+- Move the CID tests into a repo with vitest (browser-js-inject-vm, once it has the CID functions, or extract the runtime).
+
+### Code review instructions
+- `node` script: `dagcbor.encode(value)` -> `sha256.digest` -> `CID.createV1(dagcbor.code, hash)` -> `.toString()` matches PDS CID.
+- Playwright: bookmark + launch a network plugin -> runs (CID passed).
+
+### Technical details
+- Commit `a679426` (CID verification).

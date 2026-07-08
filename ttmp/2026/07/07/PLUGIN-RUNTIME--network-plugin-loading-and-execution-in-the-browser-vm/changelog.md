@@ -67,3 +67,12 @@ Network feed-middleware plugins run in the firehose sidebar: published Firehose 
 
 - /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/components/FirehosePlugins.tsx — network feed-middleware in sidebar
 
+
+## 2026-07-08
+
+Added CID verification: browser recomputes CIDv1(dag-cbor,sha256) of fetched record and checks it matches the getRecord CID + the firehose-announced CID; mismatch refuses load. Empirically verified exact PDS CID match; in-browser launch still succeeds. (commit a679426)
+
+### Related Files
+
+- /home/manuel/code/wesen/2026-07-07--atproto-experiments/frontend/src/plugins/networkLoader.ts — computeRecordCID/verifyRecordCID/loadNetworkSource
+
