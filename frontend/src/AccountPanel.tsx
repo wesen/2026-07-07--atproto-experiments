@@ -12,10 +12,12 @@ import {
 } from './store'
 
 // Starts the OAuth DPoP login flow. This is a full-page navigation (not a
-// fetch) because the OAuth flow redirects away to bsky.app and back.
-function startLogin(handle: string) {
-  const params = new URLSearchParams({ handle })
-  window.location.href = `/oauth/login?${params.toString()}`
+// fetch) because the OAuth flow redirects away to bsky.app and back. No handle
+// is passed: the user types/selects their account on bsky.app, where the
+// identifier field is editable. Passing a handle as a login hint would
+// pre-fill AND lock the identifier on bsky.app.
+function startLogin() {
+  window.location.href = '/oauth/login'
 }
 
 export function AccountPanel() {
@@ -23,7 +25,6 @@ export function AccountPanel() {
   const did = useSelector((s: RootState) => s.session.did)
   const status = useSelector((s: RootState) => s.session.status)
   const error = useSelector((s: RootState) => s.session.error)
-  const [handle, setHandle] = useState('')
 
   if (did) {
     return <PostBox did={did} onLogout={async () => {
@@ -34,24 +35,18 @@ export function AccountPanel() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!handle.trim()) return
     dispatch(loginRedirect())
-    startLogin(handle.trim())
+    startLogin()
   }
 
   return (
     <form className="account" onSubmit={submit}>
       <h2>Sign in with Bluesky</h2>
       <p className="hint">
-        You'll be redirected to bsky.app to approve access. We never see your
-        password — login uses OAuth with DPoP-bound tokens.
+        You'll be redirected to bsky.app to sign in and approve access. We never
+        see your password — login uses OAuth with DPoP-bound tokens.
       </p>
-      <input
-        placeholder="handle (e.g. alice.bsky.social)"
-        value={handle}
-        onChange={(e) => setHandle(e.target.value)}
-      />
-      <button disabled={status === 'loading' || !handle.trim()}>
+      <button disabled={status === 'loading'}>
         {status === 'loading' ? 'Redirecting…' : 'Sign in with Bluesky'}
       </button>
       {error && <p className="error">{error}</p>}

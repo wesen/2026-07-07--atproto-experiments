@@ -11,3 +11,5 @@ frontend/node_modules/
 .DS_Store
 .playwright-mcp/
 atproto-demo-live.jpeg
+oauth-redirect-bsky-app.jpeg
+oauth-no-handle-editable.jpeg
