@@ -1,0 +1,42 @@
+// Vendored from @go-go-golems/os-scripting/@go-go-golems/os-ui-cards @ a554dc3 (2026-04-06). See src/runtime/VENDORED.md. Do not edit upstream; port fixes here.
+export {
+  authorizeDomainIntent,
+  authorizeSystemIntent,
+  resolveCapabilityPolicy,
+  type CapabilityDecision,
+  type CapabilityPolicy,
+  type CapabilitySet,
+} from './capabilityPolicy';
+export {
+  clearRuntimeTimeline,
+  dequeuePendingDomainIntent,
+  dequeuePendingNavIntent,
+  dequeuePendingSystemIntent,
+  ingestRuntimeAction,
+  runtimeSessionsReducer,
+  registerRuntimeSession,
+  removeRuntimeSession,
+  setRuntimeSessionStatus,
+  type DispatchOutcome,
+  type DomainIntentEnvelope,
+  type RuntimeSessionsState,
+  type RuntimeSessionsStateSlice,
+  type RuntimeSessionRecord,
+  type RuntimeSessionStatus,
+  type RuntimeTimelineEntry,
+  type SystemIntentEnvelope,
+} from './runtimeSessionsSlice';
+export {
+  selectPendingDomainIntents,
+  selectPendingNavIntents,
+  selectPendingSystemIntents,
+  selectRuntimeSessionsState,
+  selectProjectedRuntimeDomains,
+  selectRuntimeSurfaceState,
+  selectRuntimeSession,
+  selectRuntimeSessionState,
+  selectRuntimePluginState,
+  selectRuntimePluginStateVersion,
+  selectRuntimePluginStates,
+  selectRuntimeTimeline,
+} from './selectors';

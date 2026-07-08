@@ -2,6 +2,24 @@ import { useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import type { RootState } from './store'
 import type { Post } from './types'
+import type { FeedPost } from './runtime/plugin-runtime/contracts'
+import { FirehosePlugins } from './components/FirehosePlugins'
+
+// Cap the posts fed into the middleware pipeline + display. The live firehose
+// delivers ~40 posts/s into a 500-post buffer; running the QuickJS pipeline
+// over all of them on every tick would thrash. The latest 60 is enough to
+// demonstrate filtering while keeping each pipeline run cheap.
+const PIPELINE_CAP = 60
+
+function toFeedPost(p: Post): FeedPost {
+  return {
+    id: p.uri,
+    author: p.did,
+    text: p.text,
+    ts: Date.parse(p.createdAt) || Date.parse(p.time) || 0,
+    tags: p.tags,
+  }
+}
 
 export function Feed() {
   const posts = useSelector((s: RootState) => s.feed)
@@ -9,38 +27,23 @@ export function Feed() {
 
   const rate = useRate(posts)
 
+  // Map + cap the firehose posts for the plugin pipeline. Memoized on the
+  // posts array identity so it only recomputes when the store updates.
+  const feedPosts = useMemo(
+    () => posts.slice(0, PIPELINE_CAP).map(toFeedPost),
+    [posts],
+  )
+
   return (
     <div className="feed">
       <div className="feed-head">
         <h2>Live firehose</h2>
         <span className="meta">
-          {posts.length} shown · seq {lastSeq} · ~{rate}/s
+          {posts.length} buffered · seq {lastSeq} · ~{rate}/s
         </span>
       </div>
-      <ul>
-        {posts.map((p) => (
-          <PostRow key={p.uri} post={p} />
-        ))}
-      </ul>
+      <FirehosePlugins posts={feedPosts} />
     </div>
-  )
-}
-
-function PostRow({ post }: { post: Post }) {
-  const handle = useMemo(() => shortDid(post.did), [post.did])
-  const deleted = post.action === 'delete'
-  return (
-    <li className={deleted ? 'post deleted' : 'post'}>
-      <div className="post-meta">
-        <span className="did">{handle}</span>
-        <span className="time">{relTime(post.createdAt)}</span>
-        <span className="action">{post.action}</span>
-      </div>
-      <div className="post-text">{deleted ? <em>(deleted)</em> : post.text}</div>
-      {post.tags && post.tags.length > 0 && (
-        <div className="tags">{post.tags.map((t) => `#${t}`).join(' ')}</div>
-      )}
-    </li>
   )
 }
 
@@ -52,19 +55,4 @@ function useRate(posts: Post[]): number {
     const recent = posts.filter((p) => now - new Date(p.time).getTime() < 5000)
     return recent.length > 1 ? Math.round(recent.length / 5) : 0
   }, [posts])
-}
-
-function shortDid(did: string): string {
-  // did:plc:abcdef... -> abcdef
-  const parts = did.split(':')
-  return parts.length >= 3 ? parts.slice(2).join(':').slice(0, 10) : did
-}
-
-function relTime(iso: string): string {
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return ''
-  const s = Math.round((Date.now() - t) / 1000)
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  return `${Math.floor(s / 3600)}h`
 }
