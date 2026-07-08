@@ -87,6 +87,41 @@ const echoSource = `defineRuntimeBundle(({ ui }) => ({
 }));
 `
 
+const keywordFilterSource = `defineRuntimeBundle(({ ui }) => ({
+  id: 'fh-keyword-filter',
+  title: 'Firehose Keyword Filter',
+  packageIds: ['ui'],
+  initialPluginState: { query: '', matchCount: 0 },
+  surfaces: {
+    panel: {
+      packId: 'ui.card.v1',
+      render({ state }) {
+        const p = state.plugin || {};
+        return ui.panel([
+          ui.text('Filter the live firehose by keyword or author (DID)'),
+          ui.input(p.query || '', { placeholder: 'filter...', onChange: { handler: 'setQuery' } }),
+          ui.text('matches: ' + (p.matchCount || 0)),
+        ]);
+      },
+      handlers: {
+        setQuery({ dispatchPluginAction }, args) {
+          dispatchPluginAction('state.merge', { query: String((args && args.value) || '') });
+        },
+      },
+    },
+  },
+  feed: {
+    apply({ posts, pluginState }) {
+      const q = String(pluginState.query || '').trim().toLowerCase();
+      const next = q
+        ? posts.filter((p) => p.text.toLowerCase().includes(q) || p.author.toLowerCase().includes(q))
+        : posts;
+      return { posts: next, statePatch: { matchCount: next.length } };
+    },
+  },
+}));
+`
+
 func main() {
 	storeDir := flag.String("store", "/tmp/oauth-store-ps", "OAuth store directory (must contain sessions.json)")
 	callbackURL := flag.String("callback", "http://127.0.0.1:18112/oauth/callback", "OAuth callback URL (must match the original login)")
@@ -140,6 +175,13 @@ func main() {
 	pluginsToPublish := []plugins.PublishRecord{
 		plugins.NewPublishRecord("Greeting", greetingSource, []string{"ui"}, &plugins.Capabilities{Domain: []string{}, System: []string{}}),
 		plugins.NewPublishRecord("Echo Box", echoSource, []string{"ui"}, &plugins.Capabilities{Domain: []string{}, System: []string{}}),
+		// A feed-middleware plugin: declares hooks.feedMiddleware and implements
+		// feed.apply so it can run in the firehose sidebar (network feed plugin).
+		func() plugins.PublishRecord {
+			p := plugins.NewPublishRecord("Firehose Keyword Filter", keywordFilterSource, []string{"ui"}, &plugins.Capabilities{Domain: []string{"feed"}, System: []string{}})
+			p.Hooks = &plugins.Hooks{FeedMiddleware: true}
+			return p
+		}(),
 	}
 	for _, p := range pluginsToPublish {
 		p.Description = "Published via the social plugin sharing demo."

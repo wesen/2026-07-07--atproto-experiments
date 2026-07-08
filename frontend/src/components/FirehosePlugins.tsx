@@ -17,6 +17,8 @@ import { PluginPanelHost } from '../host/PluginPanelHost';
 import { useFeedPluginPipeline } from '../features/feed/useFeedPluginPipeline';
 import type { ActiveFeedPluginSession } from '../features/feed/feedPluginPipeline';
 import type { FeedPost } from '../runtime/plugin-runtime/contracts';
+import { getCachedEntry, ensureSource } from '../plugins/networkLoader';
+import { useBookmarkedPlugins } from '../plugins/useNetworkFeed';
 
 interface ActivePlugin {
   id: string;
@@ -32,6 +34,13 @@ function postClass(annotation: Record<string, unknown> | undefined): string {
 function FirehosePluginsInner({ posts }: { posts: FeedPost[] }) {
   const [active, setActive] = useState<ActivePlugin[]>([]);
   const [source, setSource] = useState<PluginManifestEntry | null>(null);
+  const [addError, setAddError] = useState('');
+
+  // Bookmarked network feed-middleware plugins can also be added to the
+  // sidebar, completing the social loop for feed middleware.
+  const bookmarked = useBookmarkedPlugins();
+  const networkFeedPlugins = bookmarked.filter((p) => p.hooks?.feedMiddleware === true);
+  const addList = [...FEED_PLUGINS, ...networkFeedPlugins];
 
   const activeSessions: ActiveFeedPluginSession[] = useMemo(
     () => active.map((entry) => ({ id: entry.id, sessionId: entry.sessionId })),
@@ -39,12 +48,27 @@ function FirehosePluginsInner({ posts }: { posts: FeedPost[] }) {
   );
   const pipeline = useFeedPluginPipeline(activeSessions, posts);
 
-  const addPlugin = (id: string) =>
-    setActive((cur) =>
-      cur.some((a) => a.id === id)
-        ? cur
-        : [...cur, { id, sessionId: `fh-${id}-${Math.random().toString(36).slice(2, 7)}` }],
-    );
+  // Resolve an entry by id: built-in first, then the network cache (network
+  // plugins are keyed by their AT URI, which is the entry id).
+  const resolveEntry = (id: string): PluginManifestEntry | undefined =>
+    findPlugin(id) ?? getCachedEntry(id);
+
+  const addPlugin = async (id: string) => {
+    if (active.some((a) => a.id === id)) return;
+    setAddError('');
+    const entry = resolveEntry(id);
+    // Network plugins need their source fetched before the panel/pipeline can
+    // load the bundle. Built-ins already have bundleCode.
+    if (entry?.origin === 'network' && entry && !entry.bundleCode) {
+      try {
+        await ensureSource(entry);
+      } catch (err) {
+        setAddError(String(err));
+        return;
+      }
+    }
+    setActive((cur) => [...cur, { id, sessionId: `fh-${id}-${Math.random().toString(36).slice(2, 7)}` }]);
+  };
   const removePlugin = (id: string) => setActive((cur) => cur.filter((a) => a.id !== id));
 
   return (
@@ -95,7 +119,7 @@ function FirehosePluginsInner({ posts }: { posts: FeedPost[] }) {
         <div className="fh-add">
           <span className="fh-add-label">Add feed plugin</span>
           <div className="fh-add-buttons">
-            {FEED_PLUGINS.map((plugin) => {
+            {addList.map((plugin) => {
               const isActive = active.some((a) => a.id === plugin.id);
               return (
                 <button
@@ -106,14 +130,15 @@ function FirehosePluginsInner({ posts }: { posts: FeedPost[] }) {
                   title={plugin.description}
                   onClick={() => addPlugin(plugin.id)}
                 >
-                  + {plugin.title}
+                  + {plugin.title}{plugin.origin === 'network' ? ' ✨' : ''}
                 </button>
               );
             })}
           </div>
+          {addError && <span className="fh-err">{addError}</span>}
         </div>
         {active.map((entry) => {
-          const plugin = findPlugin(entry.id);
+          const plugin = resolveEntry(entry.id);
           if (!plugin) return null;
           return (
             <PluginPanelHost

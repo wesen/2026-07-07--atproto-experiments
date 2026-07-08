@@ -27,6 +27,8 @@ export interface PluginManifestEntry {
   origin?: 'builtin' | 'network';
   uri?: string;
   cid?: string;
+  /** Which feed hooks the plugin declares (network plugins carry this from the feed summary). */
+  hooks?: { feedMiddleware?: boolean; incomingFeedMessage?: boolean };
 }
 
 export const PLUGIN_CATALOG: PluginManifestEntry[] = [

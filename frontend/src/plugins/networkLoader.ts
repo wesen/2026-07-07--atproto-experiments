@@ -78,6 +78,7 @@ export function summaryToEntry(s: PluginSummary): PluginManifestEntry {
     origin: 'network',
     uri: s.uri,
     cid: s.cid,
+    hooks: hooks,
   };
 }
 
